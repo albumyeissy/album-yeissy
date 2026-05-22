@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, runTransaction } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
@@ -143,13 +143,35 @@ export default function TorturaPage() {
   };
 
   const darPremio = async (tipo) => {
+    // --- Anti multi-device: marcar fechaTortura de forma atómica ---
+    // Si dos dispositivos intentan a la vez, solo uno pasa la transacción.
+    let freshSobresBonus = datosUsuario?.sobresBonus || 0;
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, "usuarios", user.uid);
+        const snap = await transaction.get(userRef);
+        if (!snap.exists()) throw new Error("no-data");
+        const d = snap.data();
+        if (d.fechaTortura === HOY) throw new Error("ya-hecha");
+        freshSobresBonus = d.sobresBonus || 0;
+        // Marcar como hecha inmediatamente (atómico)
+        transaction.set(userRef, { fechaTortura: HOY }, { merge: true });
+      });
+    } catch (err) {
+      if (err.message === "ya-hecha") {
+        setYaHechaHoy(true);
+        setFase("intro");
+      }
+      return;
+    }
+
     if (tipo === "sobre") {
       // Añadir sobre al bonus — se abre con toda la animación desde abrir-sobre
-      const nuevoBonus = (datosUsuario?.sobresBonus || 0) + 1;
+      const nuevoBonus = freshSobresBonus + 1;
       try {
         await setDoc(doc(db, "usuarios", user.uid), {
           sobresBonus: nuevoBonus,
-          fechaTortura: HOY,
+          // fechaTortura ya escrita en la transacción
         }, { merge: true });
         addFeedEvent({
           type: "racha",
@@ -176,7 +198,7 @@ export default function TorturaPage() {
       try {
         await setDoc(doc(db, "usuarios", user.uid), {
           cromos: cromosActualizados,
-          fechaTortura: HOY,
+          // fechaTortura ya escrita en la transacción
         }, { merge: true });
         addFeedEvent({
           type: "racha",

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, runTransaction } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
@@ -124,11 +124,55 @@ export default function AbrirSobrePage() {
 
   const iniciarApertura = async () => {
     if (!puedeAbrir || fase !== "idle") return;
-    const usandoRuleta = sobresHoy >= maxSobresHoy && sobresBonus === 0 && sobresRuleta > 0;
-    const usandoBonus  = sobresHoy >= maxSobresHoy && sobresBonus > 0 && !usandoRuleta;
-    const mega = !usandoRuleta && siguienteEsMega;   // los sobres de ruleta nunca son mega
+
+    // --- Anti multi-device: reclamar slot de forma atómica en Firestore ---
+    // Si dos dispositivos abren a la vez, solo uno pasa la transacción.
+    let freshSobresHoy    = sobresHoy;
+    let freshMaxSobres    = maxSobresHoy;
+    let freshSobresBonus  = sobresBonus;
+    let freshSobresRuleta = sobresRuleta;
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, "usuarios", user.uid);
+        const snap = await transaction.get(userRef);
+        if (!snap.exists()) throw new Error("no-data");
+        const d = snap.data();
+        freshSobresHoy    = d.fechaUltimoSobre === HOY ? (d.sobresAbiertosHoy || 0) : 0;
+        freshMaxSobres    = d.fechaMaldicion === HOY ? 1 : MAX_SOBRES;
+        freshSobresBonus  = d.sobresBonus || 0;
+        freshSobresRuleta = d.sobresRuleta || 0;
+
+        if (freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshSobresRuleta === 0)
+          throw new Error("limite");
+
+        const _usandoRuleta = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshSobresRuleta > 0;
+        const _usandoBonus  = freshSobresHoy >= freshMaxSobres && freshSobresBonus > 0 && !_usandoRuleta;
+        const claim = {};
+        if (!_usandoBonus && !_usandoRuleta) { claim.sobresAbiertosHoy = freshSobresHoy + 1; claim.fechaUltimoSobre = HOY; }
+        if (_usandoBonus)  claim.sobresBonus  = freshSobresBonus - 1;
+        if (_usandoRuleta) claim.sobresRuleta = freshSobresRuleta - 1;
+        transaction.set(userRef, claim, { merge: true });
+      });
+    } catch (err) {
+      // Sincronizar estado local con la realidad (otro dispositivo ya usó el slot)
+      setSobresHoy(freshSobresHoy);
+      setSobresBonus(freshSobresBonus);
+      setSobresRuleta(freshSobresRuleta);
+      return;
+    }
+
+    // Calcular desde valores frescos de Firestore
+    const usandoRuleta = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshSobresRuleta > 0;
+    const usandoBonus  = freshSobresHoy >= freshMaxSobres && freshSobresBonus > 0 && !usandoRuleta;
+    const mega = !usandoRuleta && siguienteEsMega;
     setEsMegaSobre(mega);
     setEsSobreRuleta(usandoRuleta);
+    // Sincronizar contadores locales con lo que se reclamó
+    if (!usandoBonus && !usandoRuleta) setSobresHoy(freshSobresHoy + 1);
+    if (usandoBonus)  setSobresBonus(freshSobresBonus - 1);
+    if (usandoRuleta) setSobresRuleta(freshSobresRuleta - 1);
+
     setFase("abriendo");
     setDragProgress(1);
     setRachaMsg(null);
@@ -138,30 +182,26 @@ export default function AbrirSobrePage() {
 
     // Racha
     let nuevaRacha = rachaActual;
-    let nuevoBonus = sobresBonus;
+    let nuevoBonus = freshSobresBonus;
     const fechaUltima = datosUsuario?.fechaUltimaApertura || "";
     if (fechaUltima !== HOY) {
       nuevaRacha = fechaUltima === getAyer() ? (datosUsuario?.rachaActual || 0) + 1 : 1;
       setRachaActual(nuevaRacha);
       if (nuevaRacha > 0 && nuevaRacha % 5 === 0) {
-        nuevoBonus = (usandoBonus ? sobresBonus - 1 : sobresBonus) + 1;
+        nuevoBonus = (usandoBonus ? freshSobresBonus - 1 : freshSobresBonus) + 1;
         setSobresBonus(nuevoBonus);
         setRachaMsg(`🔥 ¡${nuevaRacha} días de racha! 🎁 +1 sobre bonus`);
         addFeedEvent({ type: "racha", userName: datosUsuario?.nombre, details: `¡Lleva ${nuevaRacha} días de racha! 🎁 Sobre bonus` });
       } else {
-        if (usandoBonus) nuevoBonus = sobresBonus - 1;
+        if (usandoBonus) nuevoBonus = freshSobresBonus - 1;
         setSobresBonus(nuevoBonus);
       }
     } else {
-      if (usandoBonus) { nuevoBonus = sobresBonus - 1; setSobresBonus(nuevoBonus); }
+      if (usandoBonus) { nuevoBonus = freshSobresBonus - 1; setSobresBonus(nuevoBonus); }
     }
 
-    // Sobre de ruleta
-    let nuevoSobresRuleta = sobresRuleta;
-    if (usandoRuleta) {
-      nuevoSobresRuleta = sobresRuleta - 1;
-      setSobresRuleta(nuevoSobresRuleta);
-    }
+    // Ruleta (ya reclamado en la transacción, calcular para write de Firestore)
+    const nuevoSobresRuleta = usandoRuleta ? freshSobresRuleta - 1 : freshSobresRuleta;
 
     const cantidadCromos = mega ? CROMOS_MEGA : CROMOS_NORMAL;
     const nuevos = [];
@@ -196,7 +236,6 @@ export default function AbrirSobrePage() {
     cromosConInfo.filter((c) => c.rareza === "mitica").forEach(() => {
       addFeedEvent({ type: "mitica", userName: datosUsuario?.nombre, details: `⚡⚡ ¡¡HA DESCUBIERTO LA CARTA MÍTICA!! ⚡⚡` });
     });
-
     if (mega) {
       addFeedEvent({ type: "legendaria", userName: datosUsuario?.nombre, details: `¡Ha abierto un ⭐ MEGA SOBRE ⭐!` });
     }
@@ -252,14 +291,11 @@ export default function AbrirSobrePage() {
       if (existing) existing.cantidad += 1;
       else cromosActualizados.push({ cromoId: cromo.id, cantidad: 1, fechaObtenido: HOY, pegado: false });
     });
-    const usandoExtra     = sobresHoy >= maxSobresHoy;
-    const nuevosSobresHoy = usandoExtra ? sobresHoy : sobresHoy + 1;
-    setSobresHoy(nuevosSobresHoy);
     setDatosUsuario({ ...datosUsuario, cromos: cromosActualizados });
     try {
+      // sobresAbiertosHoy y fechaUltimoSobre ya se escribieron atómicamente en iniciarApertura
       setDoc(doc(db, "usuarios", user.uid), {
-        cromos: cromosActualizados, sobresAbiertosHoy: nuevosSobresHoy,
-        fechaUltimoSobre: HOY, email: user.email,
+        cromos: cromosActualizados, email: user.email,
       }, { merge: true });
     } catch (err) { console.error(err); }
   };
