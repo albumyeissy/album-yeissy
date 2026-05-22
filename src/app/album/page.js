@@ -19,6 +19,7 @@ export default function AlbumPage() {
   const [miNombre, setMiNombre] = useState("");
   const [rachaActual, setRachaActual] = useState(0);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showOtros, setShowOtros] = useState(false);
   const router = useRouter();
   const [previewCromo, setPreviewCromo] = useState(null);
   const [previewFlipped, setPreviewFlipped] = useState(false);
@@ -222,6 +223,7 @@ export default function AlbumPage() {
     <div style={{ minHeight: "100vh", background: "#0f172a", overflow: "hidden" }}>
       <style>{`
         @keyframes previewFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .preview-inner {
           width: 100%; height: 100%; position: relative;
           transform-style: preserve-3d;
@@ -262,13 +264,6 @@ export default function AlbumPage() {
               {totalPegados}/{totalCromos} pegados ({porcentaje}%)
             </p>
           </div>
-          <button onClick={() => setShowLogoutConfirm(true)} style={{
-            padding: "6px 12px", borderRadius: "8px", border: "1px solid #475569",
-            background: "transparent", color: "#64748b", cursor: "pointer",
-            fontSize: "0.75rem"
-          }}>
-            Salir
-          </button>
         </div>
 
         {/* Barra de progreso */}
@@ -283,64 +278,6 @@ export default function AlbumPage() {
           }} />
         </div>
 
-        {/* Botones de navegación */}
-        <div style={{ display: "flex", gap: "6px" }}>
-          <button onClick={() => router.push("/mazo")} style={{
-            flex: 1, padding: "8px", borderRadius: "10px", border: "none",
-            background: cromosSinPegar > 0 ? "#f59e0b" : "#334155",
-            color: cromosSinPegar > 0 ? "#000" : "#94a3b8",
-            fontWeight: "bold", cursor: "pointer", fontSize: "0.8rem",
-            position: "relative"
-          }}>
-            📋 Mazo
-            {cromosSinPegar > 0 && (
-              <span style={{
-                position: "absolute", top: "-5px", right: "-5px",
-                background: "#ef4444", color: "white", borderRadius: "50%",
-                width: "20px", height: "20px", fontSize: "0.65rem",
-                display: "flex", justifyContent: "center", alignItems: "center",
-                fontWeight: "bold"
-              }}>
-                {cromosSinPegar}
-              </span>
-            )}
-          </button>
-          <button onClick={() => router.push("/abrir-sobre")} style={{
-            flex: 1, padding: "8px", borderRadius: "10px", border: "none",
-            background: "#334155", color: "white",
-            fontWeight: "bold", cursor: "pointer", fontSize: "0.8rem"
-          }}>
-            📦 Sobre
-          </button>
-          <button onClick={() => router.push("/mercado")} style={{
-            flex: 1, padding: "8px", borderRadius: "10px", border: "none",
-            background: "#334155", color: "white",
-            fontWeight: "bold", cursor: "pointer", fontSize: "0.8rem"
-          }}>
-            🔄 Mercado
-          </button>
-          <button onClick={() => router.push("/tortura")} style={{
-            padding: "8px 12px", borderRadius: "10px", border: "none",
-            background: "#334155", color: "white",
-            fontWeight: "bold", cursor: "pointer", fontSize: "0.8rem"
-          }}>
-            💰
-          </button>
-          <button onClick={() => router.push("/ranking")} style={{
-            padding: "8px 12px", borderRadius: "10px", border: "none",
-            background: "#334155", color: "white",
-            fontWeight: "bold", cursor: "pointer", fontSize: "0.8rem"
-          }}>
-            🏆
-          </button>
-          <button onClick={() => router.push("/feed")} style={{
-            padding: "8px 12px", borderRadius: "10px", border: "none",
-            background: "#334155", color: "white",
-            fontWeight: "bold", cursor: "pointer", fontSize: "0.8rem"
-          }}>
-            📢
-          </button>
-        </div>
       </header>
 
       {/* === CAROUSEL === */}
@@ -366,7 +303,7 @@ export default function AlbumPage() {
               style={{
                 minWidth: "100%",
                 scrollSnapAlign: "start",
-                padding: "20px 15px 100px 15px",
+                padding: "20px 15px 90px 15px",
               }}
             >
               {/* Título de página */}
@@ -384,6 +321,52 @@ export default function AlbumPage() {
                 <p style={{ color: "#64748b", fontSize: "0.85rem" }}>
                   {pegadosPage}/{cromosPage.length} cromos pegados
                 </p>
+              </div>
+
+              {/* Navegación inline */}
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+                <button
+                  onClick={() => goToPage(Math.max(0, currentPage - 1))}
+                  style={{
+                    width: "28px", height: "28px", borderRadius: "50%",
+                    border: "1px solid #334155", background: "rgba(15,23,42,0.6)",
+                    color: currentPage === 0 ? "#334155" : "#64748b",
+                    cursor: currentPage === 0 ? "default" : "pointer",
+                    display: "flex", justifyContent: "center", alignItems: "center",
+                    fontSize: "0.85rem", flexShrink: 0,
+                  }}
+                >←</button>
+                <div style={{ display: "flex", gap: "5px", alignItems: "center" }}>
+                  {visiblePaginas.map((p, idx) => {
+                    const cromosP = CROMOS.filter((c) => c.pagina === p.id);
+                    const pegadosP = cromosP.filter((c) => estaPegado(c.id)).length;
+                    const completaP = pegadosP === cromosP.length && cromosP.length > 0;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => goToPage(idx)}
+                        style={{
+                          width: currentPage === idx ? "20px" : "7px",
+                          height: "7px", borderRadius: "4px", border: "none",
+                          cursor: "pointer", transition: "all 0.3s",
+                          background: completaP ? "#10b981" : currentPage === idx ? "#f59e0b" : "#334155",
+                        }}
+                        title={p.nombre}
+                      />
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => goToPage(Math.min(visiblePaginas.length - 1, currentPage + 1))}
+                  style={{
+                    width: "28px", height: "28px", borderRadius: "50%",
+                    border: "1px solid #334155", background: "rgba(15,23,42,0.6)",
+                    color: currentPage === visiblePaginas.length - 1 ? "#334155" : "#64748b",
+                    cursor: currentPage === visiblePaginas.length - 1 ? "default" : "pointer",
+                    display: "flex", justifyContent: "center", alignItems: "center",
+                    fontSize: "0.85rem", flexShrink: 0,
+                  }}
+                >→</button>
               </div>
 
               {/* Fondo de "página de álbum" */}
@@ -558,71 +541,6 @@ export default function AlbumPage() {
             </div>
           );
         })}
-      </div>
-
-      {/* === NAVEGACIÓN INFERIOR (flechas + puntos) === */}
-      <div style={{
-        position: "fixed", bottom: "15px", left: 0, right: 0,
-        display: "flex", justifyContent: "center", alignItems: "center",
-        gap: "8px", zIndex: 20, padding: "10px",
-      }}>
-        <button
-          onClick={() => goToPage(Math.max(0, currentPage - 1))}
-          style={{
-            width: "30px", height: "30px", borderRadius: "50%",
-            border: "1px solid #334155",
-            background: "rgba(15,23,42,0.9)",
-            backdropFilter: "blur(10px)",
-            color: currentPage === 0 ? "#334155" : "#94a3b8",
-            fontSize: "0.9rem",
-            cursor: currentPage === 0 ? "default" : "pointer",
-            display: "flex", justifyContent: "center", alignItems: "center",
-            flexShrink: 0,
-          }}
-        >←</button>
-
-        <div style={{
-          display: "flex", gap: "6px",
-          background: "rgba(15,23,42,0.9)",
-          padding: "8px 14px",
-          borderRadius: "20px",
-          backdropFilter: "blur(10px)",
-          border: "1px solid #334155",
-        }}>
-          {visiblePaginas.map((p, idx) => {
-            const cromosP = CROMOS.filter((c) => c.pagina === p.id);
-            const pegadosP = cromosP.filter((c) => estaPegado(c.id)).length;
-            const completaP = pegadosP === cromosP.length && cromosP.length > 0;
-            return (
-              <button
-                key={p.id}
-                onClick={() => goToPage(idx)}
-                style={{
-                  width: currentPage === idx ? "24px" : "8px",
-                  height: "8px", borderRadius: "4px", border: "none",
-                  cursor: "pointer", transition: "all 0.3s",
-                  background: completaP ? "#10b981" : currentPage === idx ? "#f59e0b" : "#475569",
-                }}
-                title={p.nombre}
-              />
-            );
-          })}
-        </div>
-
-        <button
-          onClick={() => goToPage(Math.min(visiblePaginas.length - 1, currentPage + 1))}
-          style={{
-            width: "30px", height: "30px", borderRadius: "50%",
-            border: "1px solid #334155",
-            background: "rgba(15,23,42,0.9)",
-            backdropFilter: "blur(10px)",
-            color: currentPage === visiblePaginas.length - 1 ? "#334155" : "#94a3b8",
-            fontSize: "0.9rem",
-            cursor: currentPage === visiblePaginas.length - 1 ? "default" : "pointer",
-            display: "flex", justifyContent: "center", alignItems: "center",
-            flexShrink: 0,
-          }}
-        >→</button>
       </div>
 
       {/* === ANIMACIÓN DE PEGADO === */}
@@ -816,6 +734,118 @@ export default function AlbumPage() {
             Toca para cerrar
           </p>
         </div>
+      )}
+
+      {/* === BOTTOM TAB BAR === */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50,
+        background: "rgba(15,23,42,0.97)", backdropFilter: "blur(12px)",
+        borderTop: "1px solid #1e293b",
+        display: "flex", alignItems: "flex-end",
+        height: "68px", paddingBottom: "6px",
+      }}>
+        {/* MAZO */}
+        <button onClick={() => router.push("/mazo")} style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: "3px", height: "100%",
+          border: "none", background: "transparent",
+          color: "#64748b", cursor: "pointer", position: "relative",
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>📋</span>
+          <span style={{ fontSize: "0.6rem" }}>Mazo</span>
+          {cromosSinPegar > 0 && (
+            <div style={{
+              position: "absolute", top: "6px", right: "calc(50% - 22px)",
+              background: "#ef4444", color: "white", borderRadius: "50%",
+              width: "17px", height: "17px", fontSize: "0.55rem",
+              display: "flex", justifyContent: "center", alignItems: "center",
+              fontWeight: "bold",
+            }}>{cromosSinPegar}</div>
+          )}
+        </button>
+
+        {/* SOBRE — central y elevado */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", paddingBottom: "6px" }}>
+          <button onClick={() => router.push("/abrir-sobre")} style={{
+            width: "56px", height: "56px", borderRadius: "50%",
+            background: "linear-gradient(135deg, #f59e0b, #d97706)",
+            border: "3px solid #0f172a",
+            boxShadow: "0 -4px 20px rgba(245,158,11,0.4), 0 4px 15px rgba(0,0,0,0.5)",
+            transform: "translateY(-14px)",
+            display: "flex", justifyContent: "center", alignItems: "center",
+            cursor: "pointer", fontSize: "1.5rem",
+            flexShrink: 0,
+          }}>📦</button>
+          <span style={{ fontSize: "0.6rem", color: "#94a3b8", marginTop: "-8px" }}>Sobre</span>
+        </div>
+
+        {/* MERCADO */}
+        <button onClick={() => router.push("/mercado")} style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: "3px", height: "100%",
+          border: "none", background: "transparent",
+          color: "#64748b", cursor: "pointer",
+        }}>
+          <span style={{ fontSize: "1.4rem" }}>🔄</span>
+          <span style={{ fontSize: "0.6rem" }}>Mercado</span>
+        </button>
+
+        {/* OTROS */}
+        <button onClick={() => setShowOtros(true)} style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          gap: "3px", height: "100%",
+          border: "none", background: "transparent",
+          color: "#64748b", cursor: "pointer",
+        }}>
+          <span style={{ fontSize: "1.2rem", letterSpacing: "2px", lineHeight: 1 }}>···</span>
+          <span style={{ fontSize: "0.6rem" }}>Otros</span>
+        </button>
+      </div>
+
+      {/* === OTROS SHEET === */}
+      {showOtros && (
+        <>
+          <div onClick={() => setShowOtros(false)} style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.5)", zIndex: 150,
+          }} />
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0,
+            background: "#1e293b", borderRadius: "20px 20px 0 0",
+            padding: "16px 20px 36px",
+            zIndex: 151, borderTop: "1px solid #334155",
+            animation: "slideUp 0.25s ease-out",
+          }}>
+            <div style={{ width: "36px", height: "4px", background: "#475569", borderRadius: "2px", margin: "0 auto 22px" }} />
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "16px" }}>
+              {[
+                { icon: "🏆", label: "Ranking", path: "/ranking" },
+                { icon: "📢", label: "Feed", path: "/feed" },
+                { icon: "😈", label: "Tortura", path: "/tortura" },
+              ].map((item) => (
+                <button key={item.path} onClick={() => { setShowOtros(false); router.push(item.path); }} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  gap: "8px", padding: "18px 8px", borderRadius: "14px",
+                  border: "1px solid #334155", background: "#0f172a",
+                  color: "white", cursor: "pointer",
+                }}>
+                  <span style={{ fontSize: "2rem" }}>{item.icon}</span>
+                  <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{item.label}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => { setShowOtros(false); setShowLogoutConfirm(true); }} style={{
+              width: "100%", padding: "12px", borderRadius: "12px",
+              border: "1px solid #334155", background: "transparent",
+              color: "#64748b", cursor: "pointer", fontSize: "0.85rem",
+            }}>
+              👋 Cerrar sesión
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
