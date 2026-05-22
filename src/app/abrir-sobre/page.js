@@ -126,6 +126,9 @@ export default function AbrirSobrePage() {
     setFase("abriendo");
     setDragProgress(1);
     setRachaMsg(null);
+    if (navigator.vibrate) navigator.vibrate(mega ? [40, 20, 40] : 40);
+    setShowFlash(mega ? "gold" : "white");
+    setTimeout(() => setShowFlash(false), 250);
 
     // Racha
     let nuevaRacha = rachaActual;

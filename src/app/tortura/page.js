@@ -29,6 +29,24 @@ export default function TorturaPage() {
   const [fase, setFase] = useState("intro");
   const [premio, setPremio] = useState(null);
   const [cromosGanados, setCromosGanados] = useState([]);
+  const [countdown, setCountdown] = useState("");
+
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      const tom = new Date(now);
+      tom.setDate(tom.getDate() + 1);
+      tom.setHours(0, 0, 0, 0);
+      const diff = tom - now;
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(`${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+    };
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Video states
   const [videoTime, setVideoTime] = useState(0);
@@ -329,10 +347,34 @@ export default function TorturaPage() {
 
       {/* =========== YA HECHA HOY =========== */}
       {yaHechaHoy && fase !== "premio" && (
-        <div style={{ textAlign: "center", paddingTop: "40px" }}>
-          <p style={{ fontSize: "3rem", marginBottom: "15px" }}>😴</p>
-          <h2 style={{ fontSize: "1.4rem", marginBottom: "10px" }}>Ya has sufrido hoy</h2>
-          <p style={{ color: "#94a3b8" }}>Vuelve mañana para otra tortura</p>
+        <div style={{ textAlign: "center", paddingTop: "30px" }}>
+          <p style={{ fontSize: "3.5rem", marginBottom: "10px" }}>😈</p>
+          <h2 style={{ fontSize: "1.5rem", marginBottom: "6px", color: "#ef4444" }}>
+            Ya has sufrido suficiente
+          </h2>
+          <p style={{ color: "#64748b", fontSize: "0.9rem", fontStyle: "italic", marginBottom: "30px" }}>
+            ¿De verdad crees que puedes con más?
+          </p>
+          <div style={{
+            background: "linear-gradient(145deg, #1e293b, #0f172a)",
+            borderRadius: "16px", padding: "24px",
+            border: "1px solid #334155",
+            maxWidth: "280px", margin: "0 auto",
+            boxShadow: "0 0 30px rgba(239,68,68,0.05)",
+          }}>
+            <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "10px", letterSpacing: "1px" }}>
+              EL PRÓXIMO SUFRIMIENTO EN
+            </p>
+            <p style={{
+              fontSize: "2.8rem", fontWeight: "bold", fontFamily: "monospace",
+              color: "#ef4444", margin: 0, letterSpacing: "4px",
+            }}>
+              {countdown}
+            </p>
+            <p style={{ color: "#334155", fontSize: "0.7rem", marginTop: "14px", fontStyle: "italic" }}>
+              ...si es que te atreves a volver
+            </p>
+          </div>
         </div>
       )}
 

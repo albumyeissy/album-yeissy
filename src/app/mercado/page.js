@@ -46,6 +46,10 @@ export default function MercadoPage() {
   const [ventaVerOfertas, setVentaVerOfertas] = useState(null);
   const [ofertasDeVenta, setOfertasDeVenta] = useState([]);
 
+  // Historial
+  const [historial, setHistorial] = useState([]);
+  const [historialLoaded, setHistorialLoaded] = useState(false);
+
   const router = useRouter();
   const HOY = new Date().toISOString().split("T")[0];
 
@@ -78,6 +82,36 @@ export default function MercadoPage() {
       setVentas(v);
     } catch (err) { console.error(err); }
     setDataLoaded(true);
+  };
+
+  const loadHistorial = async () => {
+    if (historialLoaded) return;
+    try {
+      const snap = await getDocs(collection(db, "feed"));
+      const trades = [];
+      snap.forEach((d) => {
+        const data = { id: d.id, ...d.data() };
+        if (data.type === "intercambio") trades.push(data);
+      });
+      trades.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      setHistorial(trades);
+      setHistorialLoaded(true);
+    } catch (err) { console.error(err); }
+  };
+
+  useEffect(() => {
+    if (tab === "historial" && user) loadHistorial();
+  }, [tab, user]);
+
+  const timeAgo = (timestamp) => {
+    const diff = Date.now() - new Date(timestamp).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "ahora mismo";
+    if (mins < 60) return `hace ${mins}m`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `hace ${hours}h`;
+    const days = Math.floor(hours / 24);
+    return `hace ${days}d`;
   };
 
   const showMsg = (text, tipo = "") => {
@@ -807,9 +841,37 @@ export default function MercadoPage() {
 
         {/* ============= HISTORIAL ============= */}
         {dataLoaded && tab === "historial" && (
-          <div style={{ textAlign: "center", padding: "40px 20px", color: "#64748b" }}>
-            <p style={{ fontSize: "2rem", marginBottom: "10px" }}>📜</p>
-            <p>Historial próximamente</p>
+          <div>
+            <h2 style={{ fontSize: "1.1rem", marginBottom: "15px" }}>📜 Historial de intercambios</h2>
+            {!historialLoaded ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} style={{ height: "70px", borderRadius: "14px", background: "linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.5s infinite" }} />
+                ))}
+              </div>
+            ) : historial.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 20px", color: "#64748b" }}>
+                <p style={{ fontSize: "2rem", marginBottom: "10px" }}>🤝</p>
+                <p>Aún no hay intercambios</p>
+                <p style={{ fontSize: "0.85rem", marginTop: "5px" }}>¡Poned cartas a la venta!</p>
+              </div>
+            ) : (
+              historial.map((evento) => (
+                <div key={evento.id} style={{
+                  background: "linear-gradient(135deg, #0c1929, #1e293b)",
+                  borderRadius: "14px", padding: "14px", marginBottom: "10px",
+                  borderLeft: "4px solid #3b82f6",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
+                    <span style={{ fontWeight: "bold", fontSize: "0.85rem" }}>🤝 {evento.userName}</span>
+                    <span style={{ fontSize: "0.7rem", color: "#64748b" }}>{timeAgo(evento.timestamp)}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: "0.8rem", color: "#94a3b8", lineHeight: 1.4 }}>
+                    {evento.details}
+                  </p>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

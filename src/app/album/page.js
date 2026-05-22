@@ -18,6 +18,7 @@ export default function AlbumPage() {
   const scrollRef = useRef(null);
   const [miNombre, setMiNombre] = useState("");
   const [rachaActual, setRachaActual] = useState(0);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const router = useRouter();
   const [previewCromo, setPreviewCromo] = useState(null);
   const [previewFlipped, setPreviewFlipped] = useState(false);
@@ -261,7 +262,7 @@ export default function AlbumPage() {
               {totalPegados}/{totalCromos} pegados ({porcentaje}%)
             </p>
           </div>
-          <button onClick={handleLogout} style={{
+          <button onClick={() => setShowLogoutConfirm(true)} style={{
             padding: "6px 12px", borderRadius: "8px", border: "1px solid #475569",
             background: "transparent", color: "#64748b", cursor: "pointer",
             fontSize: "0.75rem"
@@ -706,6 +707,39 @@ export default function AlbumPage() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* === CONFIRMAR CERRAR SESIÓN === */}
+      {showLogoutConfirm && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.75)", zIndex: 200,
+          display: "flex", justifyContent: "center", alignItems: "center",
+        }}>
+          <div style={{
+            background: "#1e293b", borderRadius: "20px", padding: "30px",
+            maxWidth: "300px", width: "90%", textAlign: "center",
+            border: "1px solid #334155", animation: "previewFadeIn 0.2s ease-out",
+          }}>
+            <p style={{ fontSize: "1.8rem", marginBottom: "10px" }}>👋</p>
+            <h3 style={{ fontSize: "1.1rem", marginBottom: "8px" }}>¿Cerrar sesión?</h3>
+            <p style={{ color: "#94a3b8", fontSize: "0.85rem", marginBottom: "25px" }}>
+              Tendrás que volver a entrar con tu email y contraseña.
+            </p>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button onClick={() => setShowLogoutConfirm(false)} style={{
+                flex: 1, padding: "12px", borderRadius: "10px",
+                border: "1px solid #334155", background: "transparent",
+                color: "#94a3b8", cursor: "pointer", fontSize: "0.9rem"
+              }}>Cancelar</button>
+              <button onClick={handleLogout} style={{
+                flex: 1, padding: "12px", borderRadius: "10px", border: "none",
+                background: "#ef4444", color: "white",
+                cursor: "pointer", fontSize: "0.9rem", fontWeight: "bold"
+              }}>Salir</button>
+            </div>
+          </div>
         </div>
       )}
 
