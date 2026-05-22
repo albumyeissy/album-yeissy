@@ -869,7 +869,16 @@ export default function AlbumPage() {
             zIndex: 151, borderTop: "1px solid #334155",
             animation: "slideUp 0.25s ease-out",
           }}>
-            <div style={{ width: "36px", height: "4px", background: "#475569", borderRadius: "2px", margin: "0 auto 22px" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+              <div style={{ width: "36px", height: "4px", background: "#475569", borderRadius: "2px", margin: "0 auto" }} />
+              <button onClick={() => setShowOtros(false)} style={{
+                position: "absolute", right: "20px",
+                width: "30px", height: "30px", borderRadius: "50%",
+                border: "1px solid #334155", background: "#0f172a",
+                color: "#94a3b8", cursor: "pointer", fontSize: "1rem",
+                display: "flex", justifyContent: "center", alignItems: "center",
+              }}>✕</button>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "16px" }}>
               {[
                 { icon: "🏆", label: "Ranking", path: "/ranking" },
