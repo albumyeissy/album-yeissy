@@ -49,6 +49,7 @@ export default function MercadoPage() {
   // Historial
   const [historial, setHistorial] = useState([]);
   const [historialLoaded, setHistorialLoaded] = useState(false);
+  const [confirmEliminarVenta, setConfirmEliminarVenta] = useState(null);
 
   const router = useRouter();
   const HOY = new Date().toISOString().split("T")[0];
@@ -132,30 +133,41 @@ export default function MercadoPage() {
   const tieneCromo = (cromoId) =>
     misDatos?.cromos?.some((c) => c.cromoId === cromoId && c.cantidad > 0) ?? false;
 
-  const getMisRepetidos = () => {
+  // Repetidos disponibles descontando cartas ya comprometidas (en venta o en ofertas activas)
+  const getMisRepetidosDisponibles = () => {
     if (!misDatos?.cromos) return [];
-    return misDatos.cromos
-      .filter((c) => c.cantidad > 1)
-      .map((c) => ({ ...c, info: getCromoInfo(c.cromoId), sobrantes: c.cantidad - 1 }))
-      .filter((c) => c.info);
-  };
-
-  const getMisRepetidosPorRareza = (rareza) => {
-    return getMisRepetidos().filter((c) => c.info.rareza === rareza);
-  };
-
-  const ventasHoy = ventas.filter((v) => v.vendedorId === user?.uid && v.fechaCreacion?.startsWith(HOY)).length;
-  const ofertasHoy = () => {
-    let count = 0;
+    const comprometidos = {};
+    // Cartas en mis ventas activas
+    misVentas.forEach((v) => {
+      comprometidos[v.cromoId] = (comprometidos[v.cromoId] || 0) + 1;
+    });
+    // Cartas en mis ofertas activas
     ventas.forEach((v) => {
       (v.ofertas || []).forEach((o) => {
-        if (o.ofertanteId === user?.uid && o.fecha?.startsWith(HOY)) count++;
+        if (o.ofertanteId === user?.uid && o.estado === "pendiente") {
+          o.cromos.forEach((c) => {
+            comprometidos[c.cromoId] = (comprometidos[c.cromoId] || 0) + 1;
+          });
+        }
       });
     });
-    return count;
+    return misDatos.cromos
+      .map((c) => ({
+        ...c,
+        info: getCromoInfo(c.cromoId),
+        comprometidas: comprometidos[c.cromoId] || 0,
+      }))
+      .filter((c) => c.info && c.cantidad - c.comprometidas > 1)
+      .map((c) => ({ ...c, sobrantes: c.cantidad - c.comprometidas - 1 }));
   };
 
-  const misVentas = ventas.filter((v) => v.vendedorId === user?.uid);
+  const ventasHoy      = ventas.filter((v) => v.vendedorId === user?.uid && v.fechaCreacion?.startsWith(HOY)).length;
+  const ofertasHoy     = ventas.reduce((n, v) =>
+    n + (v.ofertas || []).filter((o) => o.ofertanteId === user?.uid && o.fecha?.startsWith(HOY)).length, 0
+  );
+  const accionUsadaHoy = ventasHoy >= 1 || ofertasHoy >= 1;
+  const misVentas      = ventas.filter((v) => v.vendedorId === user?.uid);
+  const ventaActivaHoy = misVentas.find((v) => v.fechaCreacion?.startsWith(HOY)) ?? null;
 
   const cumpleMinimoOferta = (rarezaProducto, cromosSeleccionados) => {
     if (cromosSeleccionados.length === 0) return false;
@@ -183,8 +195,13 @@ export default function MercadoPage() {
   // === ACCIONES ===
   const ponerEnVenta = async () => {
     if (!cromoAVender) return;
-    if (ventasHoy >= 1) {
-      showMsg("❌ Ya has puesto 1 carta a la venta hoy", "error");
+    if (accionUsadaHoy) {
+      showMsg("❌ Ya has usado tu intercambio de hoy", "error");
+      return;
+    }
+    const yaEnVenta = misVentas.some((v) => v.cromoId === cromoAVender);
+    if (yaEnVenta) {
+      showMsg("❌ Esa carta ya está en venta actualmente", "error");
       return;
     }
     const info = getCromoInfo(cromoAVender);
@@ -213,13 +230,30 @@ export default function MercadoPage() {
 
   const hacerOferta = async () => {
     if (!ventaSeleccionada || cromosOferta.length === 0) return;
-    if (ofertasHoy() >= 2) {
-      showMsg("❌ Ya has hecho 2 ofertas hoy", "error");
+    if (accionUsadaHoy) {
+      showMsg("❌ Ya has usado tu intercambio de hoy", "error");
       return;
     }
 
     const venta = ventas.find((v) => v.id === ventaSeleccionada.id);
     if (!venta) return;
+
+    // Evitar doble oferta del mismo usuario en la misma venta
+    const yaOferto = (venta.ofertas || []).some(
+      (o) => o.ofertanteId === user.uid && o.estado === "pendiente"
+    );
+    if (yaOferto) {
+      showMsg("❌ Ya tienes una oferta activa en esta venta", "error");
+      return;
+    }
+
+    // Verificar disponibilidad real (descontando compromisos)
+    const disponibles = getMisRepetidosDisponibles();
+    const noDisponible = cromosOferta.find((id) => !disponibles.some((c) => c.cromoId === id));
+    if (noDisponible) {
+      showMsg(`❌ ${getCromoInfo(noDisponible)?.nombre ?? "Carta"} ya no está disponible`, "error");
+      return;
+    }
 
     if (!cumpleMinimoOferta(venta.cromoRareza, cromosOferta)) {
       showMsg("❌ No cumples el mínimo requerido", "error");
@@ -329,12 +363,56 @@ export default function MercadoPage() {
 
   const cancelarOferta = async (venta, ofertaIndex) => {
     try {
-      const ofertas = [...venta.ofertas];
-      ofertas.splice(ofertaIndex, 1);
-      await updateDoc(doc(db, "ventas", venta.id), { ofertas });
+      // Re-fetch para evitar índice stale
+      const snap = await getDoc(doc(db, "ventas", venta.id));
+      if (!snap.exists()) {
+        showMsg("Esta venta ya no existe");
+        await loadData(user.uid);
+        return;
+      }
+      // Identificar por ofertanteId + fecha, no por índice
+      const ofertaRef = venta.ofertas[ofertaIndex];
+      const ofertasActualizadas = (snap.data().ofertas || []).filter(
+        (o) => !(o.ofertanteId === ofertaRef.ofertanteId && o.fecha === ofertaRef.fecha)
+      );
+      await updateDoc(doc(db, "ventas", venta.id), { ofertas: ofertasActualizadas });
       showMsg("Oferta cancelada");
       await loadData(user.uid);
     } catch (err) { showMsg("❌ Error", "error"); }
+  };
+
+  // Intento de hacer oferta — gestiona el conflicto con venta activa hoy
+  const intentarHacerOferta = (ventaDestino) => {
+    if (ofertasHoy >= 1) {
+      showMsg("❌ Ya has usado tu intercambio de hoy", "error");
+      return;
+    }
+    if (ventaActivaHoy) {
+      setConfirmEliminarVenta({
+        ventaAEliminar: ventaActivaHoy,
+        ventaDestino,
+        nombreCarta: ventaActivaHoy.cromoNombre,
+        nombreVendedor: ventaDestino.vendedorNombre,
+      });
+      return;
+    }
+    setVentaSeleccionada(ventaDestino);
+    setCromosOferta([]);
+  };
+
+  // Confirmar: retirar venta propia y proceder a ofertar
+  const confirmarEliminarYOfertar = async () => {
+    const { ventaAEliminar, ventaDestino } = confirmEliminarVenta;
+    try {
+      await deleteDoc(doc(db, "ventas", ventaAEliminar.id));
+      setConfirmEliminarVenta(null);
+      await loadData(user.uid);
+      setVentaSeleccionada(ventaDestino);
+      setCromosOferta([]);
+    } catch (err) {
+      showMsg("❌ Error al retirar la venta", "error");
+      setConfirmEliminarVenta(null);
+    }
   };
 
   const verOfertas = async (venta) => {
@@ -371,9 +449,11 @@ export default function MercadoPage() {
             padding: "6px 14px", borderRadius: "8px", border: "1px solid #475569",
             background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: "0.85rem"
           }}>← Álbum</button>
-          <div style={{ display: "flex", gap: "12px", fontSize: "0.75rem", color: "#64748b" }}>
-            <span>🏷️ {ventasHoy}/1 ventas</span>
-            <span>💰 {ofertasHoy()}/2 ofertas</span>
+          <div style={{
+            fontSize: "0.75rem", fontWeight: "bold",
+            color: accionUsadaHoy ? "#ef4444" : "#10b981",
+          }}>
+            {accionUsadaHoy ? "🔒 Intercambio usado hoy" : "🤝 1 intercambio disponible"}
           </div>
         </div>
         <div style={{ display: "flex", gap: "4px" }}>
@@ -484,12 +564,16 @@ export default function MercadoPage() {
                         }}>🗑️</button>
                       </div>
                     ) : (
-                      <button onClick={() => { setVentaSeleccionada(venta); setCromosOferta([]); }} style={{
+                      <button onClick={() => intentarHacerOferta(venta)} style={{
                         width: "100%", padding: "10px", borderRadius: "10px", border: "none",
-                        background: "linear-gradient(135deg, #f59e0b, #d97706)",
-                        color: "#000", fontWeight: "bold", cursor: "pointer", fontSize: "0.85rem"
+                        background: accionUsadaHoy
+                          ? "#334155"
+                          : "linear-gradient(135deg, #f59e0b, #d97706)",
+                        color: accionUsadaHoy ? "#64748b" : "#000",
+                        fontWeight: "bold", cursor: accionUsadaHoy ? "not-allowed" : "pointer",
+                        fontSize: "0.85rem"
                       }}>
-                        💰 Hacer oferta
+                        {accionUsadaHoy ? "🔒 Intercambio usado" : "💰 Hacer oferta"}
                       </button>
                     )}
                   </div>
@@ -537,13 +621,13 @@ export default function MercadoPage() {
               Puedes superar el mínimo para hacer una oferta más atractiva
             </p>
 
-            {getMisRepetidos().length === 0 ? (
+            {getMisRepetidosDisponibles().length === 0 ? (
               <p style={{ color: "#64748b", textAlign: "center", padding: "20px" }}>
                 No tienes cromos repetidos para ofrecer
               </p>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "20px" }}>
-                {getMisRepetidos().map((cromo) => {
+                {getMisRepetidosDisponibles().map((cromo) => {
                   const isSelected = cromosOferta.includes(cromo.cromoId);
                   return (
                     <div key={cromo.cromoId} onClick={() => toggleCromoOferta(cromo.cromoId)}
@@ -705,12 +789,15 @@ export default function MercadoPage() {
           <div>
             <h2 style={{ fontSize: "1.1rem", marginBottom: "15px" }}>📦 Poner a la venta</h2>
 
-            {ventasHoy >= 1 ? (
+            {accionUsadaHoy ? (
               <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
-                <p style={{ fontSize: "2rem", marginBottom: "10px" }}>🏷️</p>
-                <p>Ya has puesto 1 carta a la venta hoy</p>
+                <p style={{ fontSize: "2rem", marginBottom: "10px" }}>🔒</p>
+                <p>Ya has usado tu intercambio de hoy</p>
+                <p style={{ fontSize: "0.8rem", marginTop: "6px" }}>
+                  Vuelve mañana para un nuevo intercambio
+                </p>
               </div>
-            ) : getMisRepetidos().length === 0 ? (
+            ) : getMisRepetidosDisponibles().length === 0 ? (
               <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
                 <p style={{ fontSize: "2rem", marginBottom: "10px" }}>📦</p>
                 <p>No tienes cromos repetidos para vender</p>
@@ -721,7 +808,7 @@ export default function MercadoPage() {
                   Elige una carta repetida para poner a la venta (48h)
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "20px" }}>
-                  {getMisRepetidos().map((cromo) => {
+                  {getMisRepetidosDisponibles().map((cromo) => {
                     const isSelected = cromoAVender === cromo.cromoId;
                     return (
                       <div key={cromo.cromoId} onClick={() => setCromoAVender(isSelected ? null : cromo.cromoId)}
@@ -871,6 +958,59 @@ export default function MercadoPage() {
                 })}
               </>
             )}
+          </div>
+        )}
+
+        {/* ============= MODAL: ELIMINAR VENTA PARA OFERTAR ============= */}
+        {confirmEliminarVenta && (
+          <div style={{
+            position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+            background: "rgba(0,0,0,0.82)", zIndex: 200,
+            display: "flex", justifyContent: "center", alignItems: "center",
+            padding: "20px",
+          }}>
+            <div style={{
+              background: "#1e293b", borderRadius: "20px",
+              padding: "28px 22px", maxWidth: "320px", width: "100%",
+              border: "1px solid #334155", animation: "fadeInUp 0.25s",
+            }}>
+              <p style={{ fontSize: "2.2rem", textAlign: "center", marginBottom: "12px" }}>🔄</p>
+              <h3 style={{ fontSize: "1.05rem", textAlign: "center", marginBottom: "14px" }}>
+                Cambiar de intercambio
+              </h3>
+              <p style={{
+                fontSize: "0.85rem", color: "#94a3b8", textAlign: "center",
+                marginBottom: "22px", lineHeight: 1.6,
+              }}>
+                Tienes <strong style={{ color: "white" }}>
+                  {confirmEliminarVenta.nombreCarta}
+                </strong> en venta.{" "}
+                Para hacer una oferta a{" "}
+                <strong style={{ color: "white" }}>
+                  {confirmEliminarVenta.nombreVendedor}
+                </strong>{" "}
+                debes retirarla primero.
+              </p>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => setConfirmEliminarVenta(null)}
+                  style={{
+                    flex: 1, padding: "12px", borderRadius: "10px",
+                    border: "1px solid #334155", background: "transparent",
+                    color: "#94a3b8", cursor: "pointer",
+                  }}
+                >Cancelar</button>
+                <button
+                  onClick={confirmarEliminarYOfertar}
+                  style={{
+                    flex: 1, padding: "12px", borderRadius: "10px",
+                    border: "none",
+                    background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                    color: "#000", fontWeight: "bold", cursor: "pointer",
+                  }}
+                >Retirar y ofertar</button>
+              </div>
+            </div>
           </div>
         )}
 
