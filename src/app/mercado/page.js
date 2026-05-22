@@ -129,6 +129,9 @@ export default function MercadoPage() {
   const getBorderColor = (r) => r === "legendaria" ? "#fbbf24" : r === "rara" ? "#3b82f6" : "#64748b";
   const getRarezaLabel = (r) => r === "legendaria" ? "⭐" : r === "rara" ? "💎" : "";
 
+  const tieneCromo = (cromoId) =>
+    misDatos?.cromos?.some((c) => c.cromoId === cromoId && c.cantidad > 0) ?? false;
+
   const getMisRepetidos = () => {
     if (!misDatos?.cromos) return [];
     return misDatos.cromos
@@ -638,19 +641,38 @@ export default function MercadoPage() {
                   <p style={{ fontWeight: "bold", fontSize: "0.9rem", marginBottom: "10px" }}>
                     {oferta.ofertanteNombre} ofrece:
                   </p>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px" }}>
-                    {oferta.cromos.map((c, i) => (
-                      <div key={i} style={{
-                        display: "flex", alignItems: "center", gap: "6px",
-                        background: "#334155", padding: "4px 8px", borderRadius: "8px",
-                        border: `1px solid ${getBorderColor(c.rareza)}`
-                      }}>
-                        <img src={c.imagen} alt="" style={{
-                          width: "30px", height: "30px", borderRadius: "5px", objectFit: "cover"
-                        }} />
-                        <span style={{ fontSize: "0.7rem" }}>{c.nombre}</span>
-                      </div>
-                    ))}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "12px" }}>
+                    {oferta.cromos.map((c, i) => {
+                      const esNueva = !tieneCromo(c.cromoId);
+                      return (
+                        <div key={i} style={{
+                          position: "relative", borderRadius: "10px",
+                          border: `2px solid ${getBorderColor(c.rareza)}`,
+                          background: "#334155", overflow: "visible",
+                        }}>
+                          <div style={{ borderRadius: "8px 8px 0 0", overflow: "hidden" }}>
+                            <img src={c.imagen} alt="" style={{
+                              width: "100%", aspectRatio: "1", objectFit: "cover", display: "block"
+                            }} />
+                          </div>
+                          <div style={{ padding: "3px 4px", textAlign: "center", fontSize: "0.55rem", color: "#cbd5e1", lineHeight: 1.2 }}>
+                            {c.nombre}
+                          </div>
+                          <div style={{
+                            position: "absolute", top: "-8px", right: "-4px",
+                            background: esNueva ? "#10b981" : "#f59e0b",
+                            color: esNueva ? "white" : "#000",
+                            fontSize: "0.45rem", fontWeight: "bold",
+                            padding: "2px 5px", borderRadius: "4px",
+                            textTransform: "uppercase", letterSpacing: "0.5px",
+                            boxShadow: "0 1px 4px rgba(0,0,0,0.6)",
+                            whiteSpace: "nowrap",
+                          }}>
+                            {esNueva ? "✨ NUEVA" : "REPETIDA"}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                   <button onClick={() => aceptarOferta(ventaVerOfertas, index)} style={{
                     width: "100%", padding: "12px", borderRadius: "10px", border: "none",
