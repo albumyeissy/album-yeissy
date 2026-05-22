@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, getDocs, collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { PAGINAS, CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
@@ -20,11 +20,19 @@ export default function AlbumPage() {
   const [rachaActual, setRachaActual] = useState(0);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showOtros, setShowOtros] = useState(false);
+  const [sobresHoy, setSobresHoy] = useState(0);
+  const [sobresBonus, setSobresBonus] = useState(0);
+  const [sobreCountdown, setSobreCountdown] = useState("");
+  const [ofertasPendientes, setOfertasPendientes] = useState(0);
   const router = useRouter();
   const [previewCromo, setPreviewCromo] = useState(null);
   const [previewFlipped, setPreviewFlipped] = useState(false);
   const longPressRef = useRef(null);
   const longPressActivatedRef = useRef(false);
+
+  const HOY = new Date().toISOString().split("T")[0];
+  const MAX_SOBRES = 2;
+  const sobreDisponible = sobresHoy < MAX_SOBRES || sobresBonus > 0;
 
   const getRotation = (id) => ((id * 7 + 3) % 11 - 5) * 0.7;
 
@@ -39,18 +47,29 @@ export default function AlbumPage() {
       if (u) {
         setUser(u);
         try {
-          const snap = await getDoc(doc(db, "usuarios", u.uid));
+          const [snap, ventasSnap] = await Promise.all([
+            getDoc(doc(db, "usuarios", u.uid)),
+            getDocs(collection(db, "ventas")),
+          ]);
           if (snap.exists()) {
             const data = snap.data();
             setMisCromos(data.cromos || []);
             setMiNombre(data.nombre || data.email || "");
-            const fecha = data.fechaUltimaApertura || "";
             const hoy = new Date().toISOString().split("T")[0];
             const ayer = new Date(Date.now() - 86400000).toISOString().split("T")[0];
-            if (fecha === hoy || fecha === ayer) {
-              setRachaActual(data.rachaActual || 0);
-            }
+            const fecha = data.fechaUltimaApertura || "";
+            if (fecha === hoy || fecha === ayer) setRachaActual(data.rachaActual || 0);
+            setSobresHoy(data.fechaUltimoSobre === hoy ? (data.sobresAbiertosHoy || 0) : 0);
+            setSobresBonus(data.sobresBonus || 0);
           }
+          let pendientes = 0;
+          ventasSnap.forEach((d) => {
+            const v = d.data();
+            if (v.vendedorId === u.uid) {
+              pendientes += (v.ofertas || []).filter((o) => o.estado === "pendiente").length;
+            }
+          });
+          setOfertasPendientes(pendientes);
         } catch (err) { console.error(err); }
       } else {
         router.push("/");
@@ -59,6 +78,22 @@ export default function AlbumPage() {
     });
     return () => unsub();
   }, [router]);
+
+  // Countdown para próximo sobre
+  useEffect(() => {
+    if (sobreDisponible) { setSobreCountdown(""); return; }
+    const update = () => {
+      const now = new Date();
+      const tom = new Date(now); tom.setDate(tom.getDate() + 1); tom.setHours(0, 0, 0, 0);
+      const diff = tom - now;
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setSobreCountdown(`${h}h ${m.toString().padStart(2, "0")}m`);
+    };
+    update();
+    const iv = setInterval(update, 60000);
+    return () => clearInterval(iv);
+  }, [sobreDisponible]);
 
   // Auto-scroll desde mazo
   useEffect(() => {
@@ -224,6 +259,10 @@ export default function AlbumPage() {
       <style>{`
         @keyframes previewFadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes sobreGlow {
+          0%, 100% { box-shadow: 0 -4px 16px rgba(245,158,11,0.4), 0 4px 12px rgba(0,0,0,0.5); }
+          50% { box-shadow: 0 -4px 32px rgba(245,158,11,0.9), 0 0 24px rgba(245,158,11,0.5), 0 4px 12px rgba(0,0,0,0.5); }
+        }
         .preview-inner {
           width: 100%; height: 100%; position: relative;
           transform-style: preserve-3d;
@@ -769,15 +808,17 @@ export default function AlbumPage() {
         <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", paddingBottom: "6px" }}>
           <button onClick={() => router.push("/abrir-sobre")} style={{
             width: "56px", height: "56px", borderRadius: "50%",
-            background: "linear-gradient(135deg, #f59e0b, #d97706)",
+            background: sobreDisponible ? "linear-gradient(135deg, #f59e0b, #d97706)" : "#334155",
             border: "3px solid #0f172a",
-            boxShadow: "0 -4px 20px rgba(245,158,11,0.4), 0 4px 15px rgba(0,0,0,0.5)",
             transform: "translateY(-14px)",
             display: "flex", justifyContent: "center", alignItems: "center",
-            cursor: "pointer", fontSize: "1.5rem",
-            flexShrink: 0,
+            cursor: "pointer", fontSize: "1.5rem", flexShrink: 0,
+            animation: sobreDisponible ? "sobreGlow 2s ease-in-out infinite" : "none",
           }}>📦</button>
-          <span style={{ fontSize: "0.6rem", color: "#94a3b8", marginTop: "-8px" }}>Sobre</span>
+          <span style={{ fontSize: "0.6rem", color: sobreDisponible ? "#f59e0b" : "#64748b", marginTop: "-8px", fontWeight: sobreDisponible ? "bold" : "normal" }}>Sobre</span>
+          {!sobreDisponible && sobreCountdown && (
+            <span style={{ fontSize: "0.5rem", color: "#475569", marginTop: "1px" }}>{sobreCountdown}</span>
+          )}
         </div>
 
         {/* MERCADO */}
@@ -786,10 +827,19 @@ export default function AlbumPage() {
           alignItems: "center", justifyContent: "center",
           gap: "3px", height: "100%",
           border: "none", background: "transparent",
-          color: "#64748b", cursor: "pointer",
+          color: "#64748b", cursor: "pointer", position: "relative",
         }}>
           <span style={{ fontSize: "1.4rem" }}>🔄</span>
           <span style={{ fontSize: "0.6rem" }}>Mercado</span>
+          {ofertasPendientes > 0 && (
+            <div style={{
+              position: "absolute", top: "6px", right: "calc(50% - 22px)",
+              background: "#ef4444", color: "white", borderRadius: "50%",
+              width: "17px", height: "17px", fontSize: "0.55rem",
+              display: "flex", justifyContent: "center", alignItems: "center",
+              fontWeight: "bold",
+            }}>{ofertasPendientes}</div>
+          )}
         </button>
 
         {/* OTROS */}
