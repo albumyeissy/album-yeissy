@@ -1,0 +1,256 @@
+@import "tailwindcss";
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background-color: #0f172a;
+  color: white;
+  min-height: 100vh;
+}
+
+/* ===== OCULTAR SCROLLBAR ===== */
+.album-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.album-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* ===== ANIMACIONES DEL SOBRE ===== */
+@keyframes sobreEntrada {
+  from { transform: scale(0.8) translateY(30px); opacity: 0; }
+  to { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes sobreTemblor {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-1.5deg); }
+  75% { transform: rotate(1.5deg); }
+}
+
+@keyframes sobreAbierto {
+  0% { transform: scale(1); opacity: 1; }
+  40% { transform: scale(1.15) rotate(3deg); opacity: 1; }
+  100% { transform: scale(0) translateY(-200px) rotate(-10deg); opacity: 0; }
+}
+
+@keyframes luzExplosion {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(4); opacity: 0; }
+}
+
+/* ===== ANIMACIONES DE CARTAS ===== */
+@keyframes cartaEntrada {
+  from { transform: translateY(80px) scale(0.5) rotate(8deg); opacity: 0; }
+  to { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+@keyframes brilloDorado {
+  0%, 100% { box-shadow: 0 0 20px rgba(251,191,36,0.5); }
+  50% { box-shadow: 0 0 50px rgba(251,191,36,0.9), 0 0 100px rgba(245,158,11,0.4); }
+}
+
+@keyframes brilloAzul {
+  0%, 100% { box-shadow: 0 0 15px rgba(59,130,246,0.4); }
+  50% { box-shadow: 0 0 35px rgba(59,130,246,0.8); }
+}
+
+@keyframes legendarioTexto {
+  0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+  60% { transform: scale(1.3) rotate(3deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes pulsoSuave {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes nuevoTag {
+  0% { transform: scale(0); }
+  60% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* ===== FLIP DE CARTA 3D ===== */
+.card-container {
+  perspective: 1200px;
+}
+
+.card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+  -webkit-transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.card-inner.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: 15px;
+  overflow: hidden;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  image-rendering: auto;
+}
+
+.card-face img {
+  image-rendering: auto;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.card-back {
+  background: linear-gradient(145deg, #1e3a5f 0%, #0f172a 50%, #1e3a5f 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.card-front {
+  transform: rotateY(180deg);
+}
+
+/* ===== ALBUM CAROUSEL ===== */
+@keyframes glowPulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(251,191,36,0.3), inset 0 0 8px rgba(251,191,36,0.1);
+    border-color: rgba(251,191,36,0.4);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(251,191,36,0.6), inset 0 0 15px rgba(251,191,36,0.15);
+    border-color: rgba(251,191,36,0.8);
+  }
+}
+
+@keyframes pegadoAnim {
+  0% { transform: scale(2.5) rotate(8deg); opacity: 0; }
+  40% { transform: scale(1.1) rotate(-3deg); opacity: 1; }
+  60% { transform: scale(0.95) rotate(1deg); }
+  80% { transform: scale(1.02) rotate(-0.5deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes pegadoFlash {
+  0% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+@keyframes confettiFall {
+  0% { transform: translateY(-10vh) rotate(0deg) scale(1); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg) scale(0.5); opacity: 0; }
+}
+
+@keyframes paginaCompletaTexto {
+  0% { transform: scale(0) rotate(-10deg); opacity: 0; }
+  50% { transform: scale(1.2) rotate(3deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
+@keyframes legendarioShimmer {
+  0% { left: -100%; }
+  100% { left: 200%; }
+}
+
+@keyframes stickerEntrada {
+  from { transform: scale(0.8); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+/* ===== CARTA MÍTICA ===== */
+@keyframes miticaShake {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  10% { transform: translate(-8px, -5px) rotate(-2deg); }
+  20% { transform: translate(8px, 5px) rotate(2deg); }
+  30% { transform: translate(-6px, 6px) rotate(-3deg); }
+  40% { transform: translate(6px, -6px) rotate(3deg); }
+  50% { transform: translate(-8px, 2px) rotate(-2deg); }
+  60% { transform: translate(8px, -2px) rotate(2deg); }
+  70% { transform: translate(-6px, -4px) rotate(-3deg); }
+  80% { transform: translate(6px, 4px) rotate(3deg); }
+  90% { transform: translate(-4px, -6px) rotate(-2deg); }
+}
+
+@keyframes miticaGlow {
+  0%, 100% {
+    box-shadow: 0 0 30px rgba(239,68,68,0.6), 0 0 60px rgba(251,191,36,0.3);
+  }
+  50% {
+    box-shadow: 0 0 60px rgba(239,68,68,1), 0 0 120px rgba(251,191,36,0.6), 0 0 200px rgba(239,68,68,0.3);
+  }
+}
+
+@keyframes miticaTexto {
+  0% { transform: scale(0) rotate(-20deg); opacity: 0; letter-spacing: 0px; }
+  50% { transform: scale(1.5) rotate(5deg); opacity: 1; letter-spacing: 15px; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; letter-spacing: 10px; }
+}
+
+@keyframes miticaFlicker {
+  0%, 100% { opacity: 0; }
+  5%, 15%, 25%, 35% { opacity: 0.7; }
+  10%, 20%, 30% { opacity: 0; }
+  40% { opacity: 0; }
+}
+
+@keyframes miticaBgPulse {
+  0%, 100% { background: radial-gradient(circle, rgba(239,68,68,0.15), transparent 70%); }
+  50% { background: radial-gradient(circle, rgba(239,68,68,0.3), rgba(251,191,36,0.1) 70%); }
+}
+
+/* ===== MEGA SOBRE ===== */
+@keyframes megaFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+@keyframes megaSparkle {
+  0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1) rotate(180deg); }
+}
+
+@keyframes megaBorderGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(251,191,36,0.4), 0 0 40px rgba(245,158,11,0.2);
+    border-color: rgba(251,191,36,0.6);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(251,191,36,0.8), 0 0 80px rgba(245,158,11,0.4), 0 0 120px rgba(251,191,36,0.2);
+    border-color: rgba(251,191,36,1);
+  }
+}
+
+@keyframes megaEntrada {
+  from { transform: scale(0.5) rotate(-5deg); opacity: 0; }
+  50% { transform: scale(1.05) rotate(2deg); opacity: 1; }
+  to { transform: scale(1) rotate(0deg); opacity: 1; }
+}
