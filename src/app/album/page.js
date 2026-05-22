@@ -418,12 +418,13 @@ export default function AlbumPage() {
                           }
                           disponible && pegarCromo(cromo.id);
                         }}
-                        onTouchStart={() => (pegado || disponible) && startLongPress(cromo)}
+                        onTouchStart={(e) => { if (pegado || disponible) { e.preventDefault(); startLongPress(cromo); } }}
                         onTouchEnd={cancelLongPress}
                         onTouchMove={cancelLongPress}
                         onMouseDown={() => (pegado || disponible) && startLongPress(cromo)}
                         onMouseUp={cancelLongPress}
                         onMouseLeave={cancelLongPress}
+                        onContextMenu={(e) => e.preventDefault()}
                         style={{
                           aspectRatio: "1",
                           borderRadius: "10px",
@@ -444,6 +445,9 @@ export default function AlbumPage() {
                           }),
                           background: pegado || disponible ? "#1e293b" : "rgba(15,23,42,0.5)",
                           overflow: "hidden",
+                          WebkitTouchCallout: "none",
+                          userSelect: "none",
+                          WebkitUserSelect: "none",
                         }}
                       >
                         {pegado ? (
@@ -452,9 +456,12 @@ export default function AlbumPage() {
                             <img
                               src={cromo.imagen}
                               alt={cromo.nombre}
+                              draggable={false}
                               style={{
                                 width: "100%", height: "100%",
-                                objectFit: "cover", borderRadius: "7px"
+                                objectFit: "cover", borderRadius: "7px",
+                                pointerEvents: "none",
+                                WebkitTouchCallout: "none",
                               }}
                             />
                             {/* Nombre */}
