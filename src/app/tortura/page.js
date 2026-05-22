@@ -143,41 +143,51 @@ export default function TorturaPage() {
   };
 
   const darPremio = async (tipo) => {
-    let cromos;
     if (tipo === "sobre") {
-      cromos = seleccionarCromosAleatorios(5);
+      // Añadir sobre al bonus — se abre con toda la animación desde abrir-sobre
+      const nuevoBonus = (datosUsuario?.sobresBonus || 0) + 1;
+      try {
+        await setDoc(doc(db, "usuarios", user.uid), {
+          sobresBonus: nuevoBonus,
+          fechaTortura: HOY,
+        }, { merge: true });
+        addFeedEvent({
+          type: "racha",
+          userName: datosUsuario?.nombre || datosUsuario?.email,
+          details: `😈 Ha sobrevivido a "${torturaHoy?.nombre}" y ganado un sobre de tortura`,
+        });
+      } catch (err) { console.error(err); }
+      setDatosUsuario({ ...datosUsuario, sobresBonus: nuevoBonus });
       setPremio("sobre");
+      setYaHechaHoy(true);
+      setFase("premio");
     } else {
-      cromos = seleccionarCromosAleatorios(2);
+      // Rendirse: 2 cromos directos de consolación
+      const cromos = seleccionarCromosAleatorios(2);
       setPremio("cromos");
-    }
-    setCromosGanados(cromos);
-
-    // Guardar en Firebase
-    const cromosActuales = datosUsuario?.cromos || [];
-    const cromosActualizados = [...cromosActuales];
-    cromos.forEach((cromo) => {
-      const existing = cromosActualizados.find((c) => c.cromoId === cromo.id);
-      if (existing) existing.cantidad += 1;
-      else cromosActualizados.push({ cromoId: cromo.id, cantidad: 1, fechaObtenido: HOY, pegado: false });
-    });
-
-    try {
-      await setDoc(doc(db, "usuarios", user.uid), {
-        cromos: cromosActualizados,
-        fechaTortura: HOY,
-      }, { merge: true });
-
-      addFeedEvent({
-        type: "racha",
-        userName: datosUsuario?.nombre || datosUsuario?.email,
-        details: `🎬 Ha sobrevivido a "${torturaHoy.nombre}" y ganado ${tipo === "sobre" ? "un sobre completo" : "2 cromos"}`,
+      setCromosGanados(cromos);
+      const cromosActuales = datosUsuario?.cromos || [];
+      const cromosActualizados = [...cromosActuales];
+      cromos.forEach((cromo) => {
+        const existing = cromosActualizados.find((c) => c.cromoId === cromo.id);
+        if (existing) existing.cantidad += 1;
+        else cromosActualizados.push({ cromoId: cromo.id, cantidad: 1, fechaObtenido: HOY, pegado: false });
       });
-    } catch (err) { console.error(err); }
-
-    setDatosUsuario({ ...datosUsuario, cromos: cromosActualizados });
-    setYaHechaHoy(true);
-    setFase("premio");
+      try {
+        await setDoc(doc(db, "usuarios", user.uid), {
+          cromos: cromosActualizados,
+          fechaTortura: HOY,
+        }, { merge: true });
+        addFeedEvent({
+          type: "racha",
+          userName: datosUsuario?.nombre || datosUsuario?.email,
+          details: `😮‍💨 Se ha rendido en "${torturaHoy?.nombre}" y recibido 2 cromos de consolación`,
+        });
+      } catch (err) { console.error(err); }
+      setDatosUsuario({ ...datosUsuario, cromos: cromosActualizados });
+      setYaHechaHoy(true);
+      setFase("premio");
+    }
   };
 
   const rendirse = async (darCromos = true) => {
@@ -777,58 +787,69 @@ export default function TorturaPage() {
       {/* =========== PREMIO =========== */}
       {fase === "premio" && (
         <div style={{ textAlign: "center", animation: "fadeInUp 0.5s" }}>
-          <p style={{ fontSize: "3rem", marginBottom: "10px" }}>
-            {premio === "sobre" ? "🎉" : "😮‍💨"}
-          </p>
-          <h2 style={{ fontSize: "1.5rem", marginBottom: "8px" }}>
-            {premio === "sobre" ? "¡HAS SOBREVIVIDO!" : "Te has rendido..."}
-          </h2>
-          <p style={{ color: "#94a3b8", marginBottom: "25px" }}>
-            {premio === "sobre"
-              ? "Has ganado un sobre completo (5 cromos)"
-              : "Has ganado 2 cromos de consolación"
-            }
-          </p>
-
-          {/* Cromos ganados */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${Math.min(cromosGanados.length, 3)}, 1fr)`,
-            gap: "10px", maxWidth: "350px",
-            margin: "0 auto 30px"
-          }}>
-            {cromosGanados.map((cromo, i) => (
-              <div key={i} style={{
-                borderRadius: "12px",
-                border: `2px solid ${getBorderColor(cromo.rareza)}`,
-                overflow: "hidden", background: "#1e293b",
-                animation: `fadeInUp 0.4s ease-out ${i * 0.1}s both`
+          {premio === "sobre" ? (
+            <>
+              <div style={{ fontSize: "5rem", marginBottom: "16px", animation: "pulsoSuave 1.5s ease-in-out infinite" }}>📦</div>
+              <h2 style={{ fontSize: "1.6rem", marginBottom: "8px", color: "#f59e0b" }}>
+                ¡LO HAS CONSEGUIDO!
+              </h2>
+              <p style={{ color: "#94a3b8", marginBottom: "6px" }}>
+                Has ganado un sobre completo de tortura
+              </p>
+              <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "32px" }}>
+                Ábrelo cuando quieras desde la pantalla de sobres
+              </p>
+              <button onClick={() => router.push("/abrir-sobre")} style={{
+                padding: "16px", borderRadius: "14px", border: "none",
+                background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                color: "#000", fontWeight: "bold", cursor: "pointer", fontSize: "1.1rem",
+                boxShadow: "0 4px 20px rgba(245,158,11,0.4)",
+                width: "100%", marginBottom: "10px",
               }}>
-                <img src={cromo.imagen} alt="" style={{
-                  width: "100%", aspectRatio: "1", objectFit: "cover"
-                }} />
-                <div style={{
-                  padding: "5px", textAlign: "center",
-                  background: getRarezaBg(cromo.rareza)
-                }}>
-                  <p style={{ fontSize: "0.5rem", margin: 0, fontWeight: "bold" }}>
-                    {cromo.nombre}
-                  </p>
-                  <p style={{ fontSize: "0.45rem", margin: 0, opacity: 0.8 }}>
-                    {getRarezaLabel(cromo.rareza)}
-                  </p>
-                </div>
+                📦 Abrir sobre ahora
+              </button>
+              <button onClick={() => router.push("/album")} style={{
+                padding: "12px", borderRadius: "14px",
+                border: "1px solid #334155", background: "transparent",
+                color: "#64748b", cursor: "pointer", fontSize: "0.9rem", width: "100%",
+              }}>
+                Volver al álbum
+              </button>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: "3rem", marginBottom: "10px" }}>😮‍💨</p>
+              <h2 style={{ fontSize: "1.5rem", marginBottom: "8px" }}>Te has rendido...</h2>
+              <p style={{ color: "#94a3b8", marginBottom: "25px" }}>
+                Has ganado 2 cromos de consolación
+              </p>
+              <div style={{
+                display: "grid", gridTemplateColumns: "repeat(2, 1fr)",
+                gap: "10px", maxWidth: "220px", margin: "0 auto 30px"
+              }}>
+                {cromosGanados.map((cromo, i) => (
+                  <div key={i} style={{
+                    borderRadius: "12px", border: `2px solid ${getBorderColor(cromo.rareza)}`,
+                    overflow: "hidden", background: "#1e293b",
+                    animation: `fadeInUp 0.4s ease-out ${i * 0.15}s both`
+                  }}>
+                    <img src={cromo.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }} />
+                    <div style={{ padding: "5px", textAlign: "center", background: getRarezaBg(cromo.rareza) }}>
+                      <p style={{ fontSize: "0.5rem", margin: 0, fontWeight: "bold" }}>{cromo.nombre}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-
-          <button onClick={() => router.push("/album")} style={{
-            padding: "14px 30px", borderRadius: "14px", border: "none",
-            background: "linear-gradient(135deg, #3b82f6, #2563eb)",
-            color: "white", fontWeight: "bold", cursor: "pointer", fontSize: "1rem"
-          }}>
-            Ver álbum 📖
-          </button>
+              <button onClick={() => router.push("/album")} style={{
+                padding: "14px 30px", borderRadius: "14px", border: "none",
+                background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                color: "white", fontWeight: "bold", cursor: "pointer",
+                fontSize: "1rem", width: "100%",
+              }}>
+                Ver álbum 📖
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
