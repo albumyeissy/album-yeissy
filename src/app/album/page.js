@@ -559,97 +559,69 @@ export default function AlbumPage() {
         })}
       </div>
 
-{/* === FLECHAS PC === */}
-      <button
-        onClick={() => goToPage(Math.max(0, currentPage - 1))}
-        style={{
-          position: "fixed",
-          left: "10px",
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 20,
-          width: "44px",
-          height: "44px",
-          borderRadius: "50%",
-          border: "1px solid #334155",
-          background: "rgba(30,41,59,0.9)",
-          color: currentPage === 0 ? "#334155" : "#94a3b8",
-          fontSize: "1.2rem",
-          cursor: currentPage === 0 ? "default" : "pointer",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          backdropFilter: "blur(10px)",
-        }}
-      >
-        ←
-      </button>
-      <button
-        onClick={() => goToPage(Math.min(visiblePaginas.length - 1, currentPage + 1))}
-        style={{
-          position: "fixed",
-          right: "10px",
-          top: "50%",
-          transform: "translateY(-50%)",
-          zIndex: 20,
-          width: "44px",
-          height: "44px",
-          borderRadius: "50%",
-          border: "1px solid #334155",
-          background: "rgba(30,41,59,0.9)",
-          color: currentPage === visiblePaginas.length - 1 ? "#334155" : "#94a3b8",
-          fontSize: "1.2rem",
-          cursor: currentPage === visiblePaginas.length - 1 ? "default" : "pointer",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          backdropFilter: "blur(10px)",
-        }}
-      >
-        →
-      </button>
-
-      {/* === PAGE DOTS === */}
+      {/* === NAVEGACIÓN INFERIOR (flechas + puntos) === */}
       <div style={{
         position: "fixed", bottom: "15px", left: 0, right: 0,
-        display: "flex", justifyContent: "center", gap: "6px",
-        zIndex: 20, padding: "10px",
+        display: "flex", justifyContent: "center", alignItems: "center",
+        gap: "8px", zIndex: 20, padding: "10px",
       }}>
+        <button
+          onClick={() => goToPage(Math.max(0, currentPage - 1))}
+          style={{
+            width: "30px", height: "30px", borderRadius: "50%",
+            border: "1px solid #334155",
+            background: "rgba(15,23,42,0.9)",
+            backdropFilter: "blur(10px)",
+            color: currentPage === 0 ? "#334155" : "#94a3b8",
+            fontSize: "0.9rem",
+            cursor: currentPage === 0 ? "default" : "pointer",
+            display: "flex", justifyContent: "center", alignItems: "center",
+            flexShrink: 0,
+          }}
+        >←</button>
+
         <div style={{
           display: "flex", gap: "6px",
           background: "rgba(15,23,42,0.9)",
           padding: "8px 14px",
           borderRadius: "20px",
           backdropFilter: "blur(10px)",
-          border: "1px solid #334155"
+          border: "1px solid #334155",
         }}>
           {visiblePaginas.map((p, idx) => {
             const cromosP = CROMOS.filter((c) => c.pagina === p.id);
             const pegadosP = cromosP.filter((c) => estaPegado(c.id)).length;
             const completaP = pegadosP === cromosP.length && cromosP.length > 0;
-
             return (
               <button
                 key={p.id}
                 onClick={() => goToPage(idx)}
                 style={{
                   width: currentPage === idx ? "24px" : "8px",
-                  height: "8px",
-                  borderRadius: "4px",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all 0.3s",
-                  background: completaP
-                    ? "#10b981"
-                    : currentPage === idx
-                      ? "#f59e0b"
-                      : "#475569",
+                  height: "8px", borderRadius: "4px", border: "none",
+                  cursor: "pointer", transition: "all 0.3s",
+                  background: completaP ? "#10b981" : currentPage === idx ? "#f59e0b" : "#475569",
                 }}
                 title={p.nombre}
               />
             );
           })}
         </div>
+
+        <button
+          onClick={() => goToPage(Math.min(visiblePaginas.length - 1, currentPage + 1))}
+          style={{
+            width: "30px", height: "30px", borderRadius: "50%",
+            border: "1px solid #334155",
+            background: "rgba(15,23,42,0.9)",
+            backdropFilter: "blur(10px)",
+            color: currentPage === visiblePaginas.length - 1 ? "#334155" : "#94a3b8",
+            fontSize: "0.9rem",
+            cursor: currentPage === visiblePaginas.length - 1 ? "default" : "pointer",
+            display: "flex", justifyContent: "center", alignItems: "center",
+            flexShrink: 0,
+          }}
+        >→</button>
       </div>
 
       {/* === ANIMACIÓN DE PEGADO === */}
