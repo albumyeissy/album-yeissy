@@ -426,6 +426,9 @@ export default function MercadoPage() {
                 const esMia = venta.vendedorId === user?.uid;
                 const horas = Math.max(0, Math.round((new Date(venta.fechaExpiracion) - new Date()) / 3600000));
                 const numOfertas = (venta.ofertas || []).length;
+                const miCantidad = !esMia
+                  ? (misDatos?.cromos?.find((c) => c.cromoId === venta.cromoId)?.cantidad || 0)
+                  : null;
 
                 return (
                   <div key={venta.id} style={{
@@ -445,6 +448,16 @@ export default function MercadoPage() {
                         <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>
                           {getRarezaLabel(venta.cromoRareza)} {venta.cromoRareza} · de {venta.vendedorNombre}
                         </p>
+                        {miCantidad !== null && (
+                          <span style={{
+                            display: "inline-block", fontSize: "0.65rem", marginTop: "4px",
+                            padding: "1px 7px", borderRadius: "5px",
+                            background: miCantidad === 0 ? "rgba(16,185,129,0.12)" : miCantidad === 1 ? "rgba(100,116,139,0.1)" : "rgba(245,158,11,0.12)",
+                            color: miCantidad === 0 ? "#10b981" : miCantidad === 1 ? "#64748b" : "#f59e0b",
+                          }}>
+                            {miCantidad === 0 ? "✨ Nueva" : miCantidad === 1 ? "Ya la tienes" : `Ya tienes ${miCantidad}`}
+                          </span>
+                        )}
                         <div style={{ display: "flex", gap: "10px", marginTop: "4px" }}>
                           <span style={{ fontSize: "0.7rem", color: "#64748b" }}>
                             🔥 {numOfertas} oferta{numOfertas !== 1 ? "s" : ""}
