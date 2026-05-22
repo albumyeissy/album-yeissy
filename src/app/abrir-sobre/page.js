@@ -22,9 +22,11 @@ export default function AbrirSobrePage() {
   const [showFlash, setShowFlash] = useState(false);
   const [rachaActual, setRachaActual] = useState(0);
   const [sobresBonus, setSobresBonus] = useState(0);
+  const [sobresRuleta, setSobresRuleta] = useState(0);
   const [rachaMsg, setRachaMsg] = useState(null);
   const [totalSobresAbiertos, setTotalSobresAbiertos] = useState(0);
   const [esMegaSobre, setEsMegaSobre] = useState(false);
+  const [esSobreRuleta, setEsSobreRuleta] = useState(false);
   const [countdown, setCountdown] = useState("");
   const dragStartY = useRef(null);
   const dragProgressRef = useRef(0);
@@ -69,6 +71,7 @@ export default function AbrirSobrePage() {
             setDatosUsuario(data);
             setSobresHoy(data.fechaUltimoSobre === HOY ? (data.sobresAbiertosHoy || 0) : 0);
             setSobresBonus(data.sobresBonus || 0);
+            setSobresRuleta(data.sobresRuleta || 0);
             setTotalSobresAbiertos(data.totalSobresAbiertos || 0);
             const fecha = data.fechaUltimaApertura || "";
             if (fecha === HOY || fecha === getAyer()) setRachaActual(data.rachaActual || 0);
@@ -114,15 +117,18 @@ export default function AbrirSobrePage() {
     dragProgressRef.current = 0; setDragProgress(0); dragStartY.current = null;
   };
 
-  const puedeAbrir = sobresHoy < MAX_SOBRES || sobresBonus > 0;
-  const proximoMega = MEGA_CADA - (totalSobresAbiertos % MEGA_CADA);
+  const maxSobresHoy   = datosUsuario?.fechaMaldicion === HOY ? 1 : MAX_SOBRES;
+  const puedeAbrir     = sobresHoy < maxSobresHoy || sobresBonus > 0 || sobresRuleta > 0;
+  const proximoMega    = MEGA_CADA - (totalSobresAbiertos % MEGA_CADA);
   const siguienteEsMega = proximoMega === MEGA_CADA || proximoMega <= 0;
 
   const iniciarApertura = async () => {
     if (!puedeAbrir || fase !== "idle") return;
-    const usandoBonus = sobresHoy >= MAX_SOBRES && sobresBonus > 0;
-    const mega = siguienteEsMega;
+    const usandoRuleta = sobresHoy >= maxSobresHoy && sobresBonus === 0 && sobresRuleta > 0;
+    const usandoBonus  = sobresHoy >= maxSobresHoy && sobresBonus > 0 && !usandoRuleta;
+    const mega = !usandoRuleta && siguienteEsMega;   // los sobres de ruleta nunca son mega
     setEsMegaSobre(mega);
+    setEsSobreRuleta(usandoRuleta);
     setFase("abriendo");
     setDragProgress(1);
     setRachaMsg(null);
@@ -148,6 +154,13 @@ export default function AbrirSobrePage() {
       }
     } else {
       if (usandoBonus) { nuevoBonus = sobresBonus - 1; setSobresBonus(nuevoBonus); }
+    }
+
+    // Sobre de ruleta
+    let nuevoSobresRuleta = sobresRuleta;
+    if (usandoRuleta) {
+      nuevoSobresRuleta = sobresRuleta - 1;
+      setSobresRuleta(nuevoSobresRuleta);
     }
 
     const cantidadCromos = mega ? CROMOS_MEGA : CROMOS_NORMAL;
@@ -196,6 +209,7 @@ export default function AbrirSobrePage() {
     try {
       setDoc(doc(db, "usuarios", user.uid), {
         rachaActual: nuevaRacha, fechaUltimaApertura: HOY, sobresBonus: nuevoBonus,
+        sobresRuleta: nuevoSobresRuleta,
         totalSobresAbiertos: (totalSobresAbiertos || 0) + 1,
       }, { merge: true });
     } catch (err) { console.error(err); }
@@ -238,8 +252,8 @@ export default function AbrirSobrePage() {
       if (existing) existing.cantidad += 1;
       else cromosActualizados.push({ cromoId: cromo.id, cantidad: 1, fechaObtenido: HOY, pegado: false });
     });
-    const usandoBonus = sobresHoy >= MAX_SOBRES;
-    const nuevosSobresHoy = usandoBonus ? sobresHoy : sobresHoy + 1;
+    const usandoExtra     = sobresHoy >= maxSobresHoy;
+    const nuevosSobresHoy = usandoExtra ? sobresHoy : sobresHoy + 1;
     setSobresHoy(nuevosSobresHoy);
     setDatosUsuario({ ...datosUsuario, cromos: cromosActualizados });
     try {
@@ -253,7 +267,7 @@ export default function AbrirSobrePage() {
   const resetSobre = () => {
     setFase("idle"); setCromosDelSobre([]); setCardIndex(0);
     setCardFlipped(false); setDragProgress(0); setShowFlash(false);
-    setEsMegaSobre(false);
+    setEsMegaSobre(false); setEsSobreRuleta(false);
   };
 
   const getBorderColor = (r) =>
@@ -391,9 +405,19 @@ export default function AbrirSobrePage() {
             </div>
           ) : (
             <>
-              {sobresBonus > 0 && sobresHoy >= MAX_SOBRES && (
-                <div style={{ background: "linear-gradient(135deg, #431407, #1e293b)", padding: "10px", borderRadius: "12px", marginBottom: "15px", border: "1px solid #f59e0b" }}>
+              {maxSobresHoy < MAX_SOBRES && (
+                <div style={{ background: "linear-gradient(135deg, #1e0a2e, #1e293b)", padding: "10px", borderRadius: "12px", marginBottom: "12px", border: "1px solid #8b5cf6" }}>
+                  <p style={{ margin: 0, color: "#a78bfa", fontWeight: "bold", fontSize: "0.85rem" }}>😈 Estás maldecido — solo 1 sobre hoy</p>
+                </div>
+              )}
+              {sobresBonus > 0 && sobresHoy >= maxSobresHoy && (
+                <div style={{ background: "linear-gradient(135deg, #431407, #1e293b)", padding: "10px", borderRadius: "12px", marginBottom: "12px", border: "1px solid #f59e0b" }}>
                   <p style={{ margin: 0, color: "#fbbf24", fontWeight: "bold", fontSize: "0.9rem" }}>🎁 Usando sobre bonus ({sobresBonus})</p>
+                </div>
+              )}
+              {sobresRuleta > 0 && sobresHoy >= maxSobresHoy && sobresBonus === 0 && (
+                <div style={{ background: "linear-gradient(135deg, #0a1f2e, #1e293b)", padding: "10px", borderRadius: "12px", marginBottom: "12px", border: "1px solid #3b82f6" }}>
+                  <p style={{ margin: 0, color: "#60a5fa", fontWeight: "bold", fontSize: "0.9rem" }}>🎰 Usando sobre de ruleta ({sobresRuleta})</p>
                 </div>
               )}
 
@@ -611,6 +635,13 @@ export default function AbrirSobrePage() {
               padding: "3px 12px", borderRadius: "10px", marginBottom: "10px",
               fontSize: "0.7rem", fontWeight: "bold", color: "#000"
             }}>⭐ MEGA SOBRE</div>
+          )}
+          {esSobreRuleta && (
+            <div style={{
+              background: "linear-gradient(135deg, #1d4ed8, #1e40af)",
+              padding: "3px 12px", borderRadius: "10px", marginBottom: "10px",
+              fontSize: "0.7rem", fontWeight: "bold", color: "white"
+            }}>🎰 Sobre de Ruleta</div>
           )}
 
           {/* Progreso */}

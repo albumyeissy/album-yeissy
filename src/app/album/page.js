@@ -6,6 +6,7 @@ import { doc, getDoc, setDoc, getDocs, collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { PAGINAS, CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
+import { getFeatures, isRuletaAvailable } from "../../lib/featuresHelper";
 
 export default function AlbumPage() {
   const [user, setUser] = useState(null);
@@ -24,6 +25,7 @@ export default function AlbumPage() {
   const [sobresBonus, setSobresBonus] = useState(0);
   const [sobreCountdown, setSobreCountdown] = useState("");
   const [ofertasPendientes, setOfertasPendientes] = useState(0);
+  const [ruletaDisponible, setRuletaDisponible] = useState(false);
   const router = useRouter();
   const [previewCromo, setPreviewCromo] = useState(null);
   const [previewFlipped, setPreviewFlipped] = useState(false);
@@ -47,10 +49,12 @@ export default function AlbumPage() {
       if (u) {
         setUser(u);
         try {
-          const [snap, ventasSnap] = await Promise.all([
+          const [snap, ventasSnap, feats] = await Promise.all([
             getDoc(doc(db, "usuarios", u.uid)),
             getDocs(collection(db, "ventas")),
+            getFeatures(),
           ]);
+          setRuletaDisponible(isRuletaAvailable(feats));
           if (snap.exists()) {
             const data = snap.data();
             setMisCromos(data.cromos || []);
@@ -895,6 +899,26 @@ export default function AlbumPage() {
                   <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{item.label}</span>
                 </button>
               ))}
+
+              {/* Ruleta Rusa */}
+              <button
+                onClick={() => { setShowOtros(false); router.push("/ruleta"); }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  gap: "6px", padding: "14px 8px", borderRadius: "14px",
+                  border: ruletaDisponible ? "1px solid #ef4444" : "1px solid #334155",
+                  background: ruletaDisponible ? "rgba(239,68,68,0.08)" : "#0f172a",
+                  color: "white", cursor: "pointer", position: "relative",
+                }}
+              >
+                <span style={{ fontSize: "2rem" }}>{ruletaDisponible ? "🔫" : "🔒"}</span>
+                <span style={{ fontSize: "0.75rem", color: ruletaDisponible ? "#f87171" : "#64748b" }}>
+                  Ruleta
+                </span>
+                {!ruletaDisponible && (
+                  <span style={{ fontSize: "0.58rem", color: "#475569" }}>25 may</span>
+                )}
+              </button>
             </div>
             <button onClick={() => { setShowOtros(false); setShowLogoutConfirm(true); }} style={{
               width: "100%", padding: "12px", borderRadius: "12px",
