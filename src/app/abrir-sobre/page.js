@@ -33,20 +33,22 @@ export default function AbrirSobrePage() {
   const dragProgressRef = useRef(0);
   const router = useRouter();
 
-  const HOY = new Date().toISOString().split("T")[0];
+  // Fecha local (no UTC) para que el día cambie a medianoche local, no a las 2am
+  const HOY = new Date().toLocaleDateString("en-CA");
   const MAX_SOBRES = 2;
   const CROMOS_NORMAL = 5;
   const CROMOS_MEGA = 7;
   const MEGA_CADA = 15;
-  const PROB_MITICA = 0.5; // 20% para testing, luego 0.5%
+  const PROB_MITICA = 0.5;
 
   const getAyer = () => {
     const d = new Date(); d.setDate(d.getDate() - 1);
-    return d.toISOString().split("T")[0];
+    return d.toLocaleDateString("en-CA");
   };
 
-  // Countdown
+  // Countdown — recarga la página a medianoche para que HOY se recalcule y aparezcan los sobres
   useEffect(() => {
+    let reloading = false;
     const update = () => {
       const now = new Date();
       const tom = new Date(now); tom.setDate(tom.getDate() + 1); tom.setHours(0, 0, 0, 0);
@@ -55,6 +57,11 @@ export default function AbrirSobrePage() {
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
       setCountdown(`${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`);
+      // Al llegar a medianoche, recargar para que HOY se recalcule
+      if (diff < 1000 && !reloading) {
+        reloading = true;
+        setTimeout(() => window.location.reload(), 1500);
+      }
     };
     update();
     const iv = setInterval(update, 1000);

@@ -76,7 +76,7 @@ export default function TorturaPage() {
   const [textoError, setTextoError] = useState(false);
 
   const router = useRouter();
-  const HOY = new Date().toISOString().split("T")[0];
+  const HOY = new Date().toLocaleDateString("en-CA");
 
   // Determinar tortura del día
   useEffect(() => {

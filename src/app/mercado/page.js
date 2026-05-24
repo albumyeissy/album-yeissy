@@ -52,7 +52,7 @@ export default function MercadoPage() {
   const [confirmEliminarVenta, setConfirmEliminarVenta] = useState(null);
 
   const router = useRouter();
-  const HOY = new Date().toISOString().split("T")[0];
+  const HOY = new Date().toLocaleDateString("en-CA");
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {

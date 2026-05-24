@@ -32,7 +32,7 @@ export default function AlbumPage() {
   const longPressRef = useRef(null);
   const longPressActivatedRef = useRef(false);
 
-  const HOY = new Date().toISOString().split("T")[0];
+  const HOY = new Date().toLocaleDateString("en-CA");
   const MAX_SOBRES = 2;
   const sobreDisponible = sobresHoy < MAX_SOBRES || sobresBonus > 0;
 
@@ -59,8 +59,8 @@ export default function AlbumPage() {
             const data = snap.data();
             setMisCromos(data.cromos || []);
             setMiNombre(data.nombre || data.email || "");
-            const hoy = new Date().toISOString().split("T")[0];
-            const ayer = new Date(Date.now() - 86400000).toISOString().split("T")[0];
+            const hoy = new Date().toLocaleDateString("en-CA");
+            const ayer = new Date(Date.now() - 86400000).toLocaleDateString("en-CA");
             const fecha = data.fechaUltimaApertura || "";
             if (fecha === hoy || fecha === ayer) setRachaActual(data.rachaActual || 0);
             setSobresHoy(data.fechaUltimoSobre === hoy ? (data.sobresAbiertosHoy || 0) : 0);

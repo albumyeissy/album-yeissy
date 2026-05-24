@@ -37,7 +37,7 @@ export default function RuletaPage() {
   const [jugadoresFiltrados, setJugadoresFiltrados] = useState([]);
   const router = useRouter();
 
-  const HOY = new Date().toISOString().split("T")[0];
+  const HOY = new Date().toLocaleDateString("en-CA");
 
   /* ── Countdown (release o siguiente día) ─────────────────────── */
   useEffect(() => {
@@ -265,7 +265,7 @@ export default function RuletaPage() {
   const _maldecir = async (victimId, victimData) => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split("T")[0];
+    const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
     const victimName  = victimData?.nombre || victimData?.email || "alguien";
 
     const batch = writeBatch(db);
