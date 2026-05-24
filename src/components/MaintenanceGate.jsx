@@ -27,8 +27,10 @@ export default function MaintenanceGate({ children }) {
           setEstado("abierto");
         }
       })
-      .catch(() => {
-        // Si falla la lectura de Firestore, dejar pasar (no bloquear por error de red)
+      .catch((err) => {
+        // Loguear el error para poder depurar (permisos de Firestore, etc.)
+        console.warn("[MaintenanceGate] No se pudo leer config/features:", err.message);
+        // Fail-open: si no podemos leer, dejamos pasar para no bloquear por error de red
         setEstado("abierto");
       });
   }, []);
