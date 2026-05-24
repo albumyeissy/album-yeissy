@@ -60,6 +60,7 @@ export default function TorturaPage() {
   const [contadorLastTap, setContadorLastTap] = useState(Date.now());
   const [contadorOferta, setContadorOferta] = useState(false);
   const contadorTimeoutRef = useRef(null);
+  const contadorTapsRef = useRef(0); // fuente de verdad anti-stale-closure
   const contadorOfertaMostradaRef = useRef(false);
   const darPremioGuardRef = useRef(false);
 
@@ -74,6 +75,7 @@ export default function TorturaPage() {
   const [textoInput, setTextoInput] = useState("");
   const [textoIntentos, setTextoIntentos] = useState(3);
   const [textoError, setTextoError] = useState(false);
+  const [textoErrorDetalle, setTextoErrorDetalle] = useState("");
 
   const router = useRouter();
   const HOY = new Date().toLocaleDateString("en-CA");
@@ -118,15 +120,18 @@ export default function TorturaPage() {
   }, []);
 
   // Contador: reset si no toca en 3 seg
+  // Usamos refs para evitar stale closure: el timeout ve siempre el valor actual
   useEffect(() => {
     if (fase !== "jugando" || torturaHoy?.id !== "contador") return;
     if (contadorTimeoutRef.current) clearTimeout(contadorTimeoutRef.current);
     contadorTimeoutRef.current = setTimeout(() => {
-      if (contadorTaps > 0 && contadorTaps < 500 && !contadorOferta) {
+      const taps = contadorTapsRef.current;
+      if (taps > 0 && taps < 500 && !contadorOfertaMostradaRef.current) {
+        contadorTapsRef.current = 0;
         setContadorTaps(0);
       }
     }, 3000);
-  }, [contadorTaps, fase, torturaHoy, contadorOferta]);
+  }, [contadorTaps, fase, torturaHoy]);
 
   // === HELPERS ===
   const seleccionarCromosAleatorios = (cantidad) => {
@@ -264,14 +269,17 @@ export default function TorturaPage() {
     setFase("jugando");
     setContadorTaps(0);
     setContadorOferta(false);
+    contadorTapsRef.current = 0;
     contadorOfertaMostradaRef.current = false;
     darPremioGuardRef.current = false;
   };
 
   const handleTap = () => {
     if (contadorOferta) return;
-    const newTaps = contadorTaps + 1;
-    setContadorTaps(newTaps);
+    // Incrementar el ref primero (nunca tiene stale closure)
+    contadorTapsRef.current += 1;
+    const newTaps = contadorTapsRef.current;
+    setContadorTaps(newTaps); // solo para el display
     setContadorLastTap(Date.now());
 
     if (newTaps >= 200 && !contadorOfertaMostradaRef.current) {
@@ -320,20 +328,56 @@ export default function TorturaPage() {
     setFase("jugando");
     setTextoInput("");
     setTextoError(false);
+    setTextoErrorDetalle("");
   };
 
+  // Normaliza espacios y comillas tipográficas para evitar falsos errores
+  const normalizarTexto = (s) =>
+    s.trim()
+      .replace(/\s+/g, " ")
+      .replace(/['']/g, "'")
+      .replace(/[""]/g, '"');
+
   const handleTextoSubmit = () => {
-    if (textoInput.trim() === textoObjetivo.trim()) {
+    const objetivo = normalizarTexto(textoObjetivo);
+    const escrito = normalizarTexto(textoInput);
+
+    if (escrito === objetivo) {
       darPremio("sobre");
+      return;
+    }
+
+    // Encontrar posición del primer carácter diferente
+    let pos = 0;
+    const minLen = Math.min(objetivo.length, escrito.length);
+    while (pos < minLen && objetivo[pos] === escrito[pos]) pos++;
+
+    let detalle;
+    if (escrito.length === 0) {
+      detalle = "No has escrito nada.";
+    } else if (pos >= objetivo.length) {
+      detalle = `Texto demasiado largo: escribiste ${escrito.length} caracteres, el original tiene ${objetivo.length}.`;
+    } else if (pos >= escrito.length) {
+      detalle = `Texto incompleto: escribiste ${escrito.length} de ${objetivo.length} caracteres.`;
     } else {
-      const remaining = textoIntentos - 1;
-      setTextoIntentos(remaining);
-      setTextoError(true);
-      setTextoInput("");
-      setTimeout(() => setTextoError(false), 2000);
-      if (remaining <= 0) {
-        rendirse(false);
-      }
+      // Mostrar contexto de ~20 chars alrededor del error
+      const ctx = 18;
+      const start = Math.max(0, pos - ctx);
+      const endObj = Math.min(objetivo.length, pos + ctx);
+      const endEsc = Math.min(escrito.length, pos + ctx);
+      const snipObj = (start > 0 ? "…" : "") + objetivo.slice(start, endObj) + (endObj < objetivo.length ? "…" : "");
+      const snipEsc = (start > 0 ? "…" : "") + escrito.slice(start, endEsc) + (endEsc < escrito.length ? "…" : "");
+      detalle = `Posición ${pos + 1} → esperado: «${snipObj}» · escrito: «${snipEsc}»`;
+    }
+
+    const remaining = textoIntentos - 1;
+    setTextoIntentos(remaining);
+    setTextoError(true);
+    setTextoErrorDetalle(detalle);
+    // NO borramos el input — el jugador puede corregir y volver a intentar
+
+    if (remaining <= 0) {
+      rendirse(false);
     }
   };
 
@@ -771,7 +815,10 @@ export default function TorturaPage() {
           {/* Input */}
           <textarea
             value={textoInput}
-            onChange={(e) => setTextoInput(e.target.value)}
+            onChange={(e) => {
+              setTextoInput(e.target.value);
+              if (textoError) { setTextoError(false); setTextoErrorDetalle(""); }
+            }}
             onPaste={(e) => e.preventDefault()}
             placeholder="Escribe el texto aquí... (copiar y pegar bloqueado)"
             style={{
@@ -784,9 +831,20 @@ export default function TorturaPage() {
           />
 
           {textoError && (
-            <p style={{ color: "#ef4444", textAlign: "center", marginTop: "8px", animation: "shake 0.5s" }}>
-              ❌ No coincide. Intentos restantes: {textoIntentos}
-            </p>
+            <div style={{
+              background: "#1e1a2e", borderRadius: "10px", padding: "12px 14px",
+              marginTop: "10px", border: "1px solid #ef4444",
+              animation: "shake 0.5s"
+            }}>
+              <p style={{ color: "#ef4444", margin: "0 0 4px", fontWeight: "bold", fontSize: "0.9rem" }}>
+                ❌ {textoErrorDetalle}
+              </p>
+              {textoIntentos > 0 && (
+                <p style={{ color: "#94a3b8", fontSize: "0.78rem", margin: 0 }}>
+                  Puedes corregirlo arriba y volver a intentarlo · {textoIntentos} intento{textoIntentos !== 1 ? "s" : ""} restante{textoIntentos !== 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
           )}
 
           <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
