@@ -71,7 +71,9 @@ export default function AbrirSobrePage() {
             getDoc(doc(db, "config", "features")),
           ]);
           if (configSnap.exists()) {
-            setRachaTestMode(configSnap.data().rachaTestMode === true);
+            // El modo test se activa junto con el modo mantenimiento.
+            // Así un solo flag controla ambas cosas.
+            setRachaTestMode(configSnap.data().mantenimiento === true);
           }
           if (snap.exists()) {
             const data = snap.data();
