@@ -28,6 +28,7 @@ export default function AbrirSobrePage() {
   const [esMegaSobre, setEsMegaSobre] = useState(false);
   const [esSobreRuleta, setEsSobreRuleta] = useState(false);
   const [countdown, setCountdown] = useState("");
+  const [rachaTestMode, setRachaTestMode] = useState(false);
   const dragStartY = useRef(null);
   const dragProgressRef = useRef(0);
   const router = useRouter();
@@ -65,7 +66,13 @@ export default function AbrirSobrePage() {
       if (u) {
         setUser(u);
         try {
-          const snap = await getDoc(doc(db, "usuarios", u.uid));
+          const [snap, configSnap] = await Promise.all([
+            getDoc(doc(db, "usuarios", u.uid)),
+            getDoc(doc(db, "config", "features")),
+          ]);
+          if (configSnap.exists()) {
+            setRachaTestMode(configSnap.data().rachaTestMode === true);
+          }
           if (snap.exists()) {
             const data = snap.data();
             setDatosUsuario(data);
@@ -306,6 +313,29 @@ export default function AbrirSobrePage() {
     } catch (err) { console.error(err); }
   };
 
+  // ── MODO TEST ──────────────────────────────────────────────────────────────
+  // Simula que ha pasado un día: mueve fechaUltimaApertura a ayer y resetea
+  // el contador de sobres de hoy. Solo visible cuando rachaTestMode = true.
+  const simularDia = async () => {
+    if (!user) return;
+    const ayer = getAyer();
+    try {
+      await setDoc(doc(db, "usuarios", user.uid), {
+        fechaUltimaApertura: ayer,
+        fechaUltimoSobre:    ayer,
+        sobresAbiertosHoy:   0,
+      }, { merge: true });
+      setSobresHoy(0);
+      setDatosUsuario(prev => ({
+        ...prev,
+        fechaUltimaApertura: ayer,
+        fechaUltimoSobre:    ayer,
+        sobresAbiertosHoy:   0,
+      }));
+    } catch (err) { console.error("simularDia error:", err); }
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   const resetSobre = () => {
     setFase("idle"); setCromosDelSobre([]); setCardIndex(0);
     setCardFlipped(false); setDragProgress(0); setShowFlash(false);
@@ -373,6 +403,37 @@ export default function AbrirSobrePage() {
           )}
         </div>
       </div>
+
+      {/* ── BANNER MODO TEST ── */}
+      {rachaTestMode && (
+        <div style={{
+          background: "linear-gradient(135deg, #7f1d1d, #991b1b)",
+          border: "1px solid #ef4444", borderRadius: "12px",
+          padding: "10px 14px", marginBottom: "12px",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
+        }}>
+          <div>
+            <p style={{ margin: 0, color: "#fca5a5", fontWeight: "bold", fontSize: "0.8rem" }}>
+              ⚠️ MODO TEST ACTIVO
+            </p>
+            <p style={{ margin: "2px 0 0", color: "#f87171", fontSize: "0.7rem" }}>
+              Racha actual: {rachaActual} · Bonus: {sobresBonus} · Sobres hoy: {sobresHoy}
+            </p>
+          </div>
+          {fase === "idle" && (
+            <button
+              onClick={simularDia}
+              style={{
+                padding: "8px 14px", borderRadius: "8px", border: "none",
+                background: "#ef4444", color: "white", fontWeight: "bold",
+                fontSize: "0.8rem", cursor: "pointer", whiteSpace: "nowrap",
+              }}
+            >
+              ⏭ Simular día
+            </button>
+          )}
+        </div>
+      )}
 
       {/* RACHA */}
       {fase === "idle" && rachaActual > 0 && (
