@@ -181,6 +181,9 @@ export default function AbrirSobrePage() {
     setTimeout(() => setShowFlash(false), 250);
 
     // Racha
+    // IMPORTANTE: usar datosUsuario?.fechaUltimaApertura (no rachaActual state) para saber
+    // si ya se procesó la racha hoy. Actualizamos datosUsuario después para evitar que el
+    // segundo sobre del día vuelva a disparar el bonus (bug: datosUsuario era stale).
     let nuevaRacha = rachaActual;
     let nuevoBonus = freshSobresBonus;
     const fechaUltima = datosUsuario?.fechaUltimaApertura || "";
@@ -196,6 +199,9 @@ export default function AbrirSobrePage() {
         if (usandoBonus) nuevoBonus = freshSobresBonus - 1;
         setSobresBonus(nuevoBonus);
       }
+      // Actualizar datosUsuario local con HOY para que el segundo sobre del día
+      // no vuelva a pasar por este bloque y duplique el bonus de racha.
+      setDatosUsuario(prev => ({ ...prev, fechaUltimaApertura: HOY, rachaActual: nuevaRacha }));
     } else {
       if (usandoBonus) { nuevoBonus = freshSobresBonus - 1; setSobresBonus(nuevoBonus); }
     }
