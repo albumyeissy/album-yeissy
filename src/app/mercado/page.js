@@ -38,11 +38,12 @@ export default function MercadoPage() {
   // Vender tab
   const [cromoAVender, setCromoAVender] = useState(null);
 
-  // Hacer oferta (overlay dentro de la tab Mercado)
+  // Hacer oferta / editar oferta (overlay dentro de la tab Mercado)
   const [ventaSeleccionada,  setVentaSeleccionada]  = useState(null);
   const [cromosOferta,       setCromosOferta]       = useState([]);
   const [vendedorCromos,     setVendedorCromos]     = useState(null); // inventario del vendedor
   const [vendedorCargando,   setVendedorCargando]   = useState(false);
+  const [estaEditando,       setEstaEditando]       = useState(false); // true = editar oferta existente
 
   // Modal "Ver y aceptar ofertas" (solo para el vendedor)
   const [ventaVerOfertas, setVentaVerOfertas] = useState(null);
@@ -273,6 +274,53 @@ export default function MercadoPage() {
         "ya-ofert-aqui":   "❌ Ya tienes una oferta en esta venta",
       };
       showMsg(msgs[err.message] || "❌ Error al enviar la oferta", "error");
+      if (!msgs[err.message]) console.error(err);
+    }
+  };
+
+  // ── Acción: Guardar edición de oferta existente ────────────────────────────
+  // No consume slot (ya está usado). Solo reemplaza los cromos de la oferta.
+  const guardarEdicionOferta = async () => {
+    if (!ventaSeleccionada || !cromosOferta.length) return;
+    if (!cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)) return;
+
+    try {
+      await runTransaction(db, async (tx) => {
+        const ventaRef  = doc(db, "ventas", ventaSeleccionada.id);
+        const ventaSnap = await tx.get(ventaRef);
+
+        if (!ventaSnap.exists()) throw new Error("venta-no-existe");
+        const ventaData = ventaSnap.data();
+        if (new Date() > new Date(ventaData.fechaExpiracion)) throw new Error("venta-expirada");
+
+        // Reemplazar los cromos de la oferta del usuario (identificada por ofertanteId)
+        const ofertasActualizadas = (ventaData.ofertas || []).map((o) => {
+          if (o.ofertanteId !== user.uid) return o;
+          return {
+            ...o,
+            cromos: cromosOferta.map((id) => {
+              const inf = getCromoInfo(id);
+              return { cromoId: id, nombre: inf.nombre, rareza: inf.rareza, imagen: inf.imagen };
+            }),
+            fechaEdicion: new Date().toISOString(),
+          };
+        });
+
+        tx.update(ventaRef, { ofertas: ofertasActualizadas });
+      });
+
+      setVentaSeleccionada(null);
+      setCromosOferta([]);
+      setEstaEditando(false);
+      setTab("mis-ofertas");
+      showMsg("✅ Oferta actualizada", "success");
+      await loadData(user.uid);
+    } catch (err) {
+      const msgs = {
+        "venta-no-existe": "❌ Esta venta ya no existe",
+        "venta-expirada":  "❌ Esta venta ha caducado",
+      };
+      showMsg(msgs[err.message] || "❌ Error al actualizar la oferta", "error");
       if (!msgs[err.message]) console.error(err);
     }
   };
@@ -595,11 +643,14 @@ export default function MercadoPage() {
         ════════════════════════════════════════ */}
         {dataLoaded && tab === "mercado" && ventaSeleccionada && (
           <div>
-            <button onClick={() => { setVentaSeleccionada(null); setCromosOferta([]); }} style={{
+            <button onClick={() => {
+              setVentaSeleccionada(null); setCromosOferta([]); setEstaEditando(false);
+              if (estaEditando) setTab("mis-ofertas");
+            }} style={{
               padding: "6px 14px", borderRadius: "8px", border: "1px solid #475569",
               background: "transparent", color: "#94a3b8", cursor: "pointer",
               marginBottom: "15px", fontSize: "0.85rem",
-            }}>← Volver</button>
+            }}>← {estaEditando ? "Cancelar edición" : "Volver"}</button>
 
             {/* Carta objetivo */}
             <div style={{
@@ -608,7 +659,7 @@ export default function MercadoPage() {
               border: `2px solid ${getBorder(ventaSeleccionada.cromoRareza)}`,
             }}>
               <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "10px" }}>
-                Quieres conseguir de {ventaSeleccionada.vendedorNombre}:
+                {estaEditando ? "Editando tu oferta a" : "Quieres conseguir de"} {ventaSeleccionada.vendedorNombre}:
               </p>
               <img src={ventaSeleccionada.cromoImagen} alt="" style={{
                 width: "80px", height: "80px", borderRadius: "12px", objectFit: "cover",
@@ -718,18 +769,21 @@ export default function MercadoPage() {
             )}
 
             <button
-              onClick={hacerOferta}
+              onClick={estaEditando ? guardarEdicionOferta : hacerOferta}
               disabled={!cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta)}
               style={{
                 width: "100%", padding: "15px", borderRadius: "14px", border: "none",
                 background: cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta)
-                  ? "linear-gradient(135deg, #10b981, #059669)" : "#334155",
+                  ? estaEditando
+                    ? "linear-gradient(135deg, #3b82f6, #2563eb)"
+                    : "linear-gradient(135deg, #10b981, #059669)"
+                  : "#334155",
                 color:  cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta) ? "white" : "#64748b",
                 fontSize: "1rem", fontWeight: "bold",
                 cursor: cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta) ? "pointer" : "not-allowed",
               }}
             >
-              📤 Enviar oferta
+              {estaEditando ? "💾 Guardar cambios" : "📤 Enviar oferta"}
             </button>
           </div>
         )}
@@ -880,11 +934,27 @@ export default function MercadoPage() {
                     <p style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "10px" }}>
                       Ofreces: {oferta.cromos.map((c) => c.nombre).join(", ")}
                     </p>
-                    <button onClick={() => cancelarMiOferta(venta)} style={{
-                      width: "100%", padding: "8px", borderRadius: "8px",
-                      border: "1px solid #334155", background: "transparent",
-                      color: "#64748b", cursor: "pointer", fontSize: "0.8rem",
-                    }}>🗑️ Cancelar oferta</button>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      <button
+                        onClick={() => {
+                          // Abrir el overlay de oferta en modo edición con las cartas ya seleccionadas
+                          setVentaSeleccionada(venta);
+                          setCromosOferta(oferta.cromos.map((c) => c.cromoId));
+                          setEstaEditando(true);
+                          setTab("mercado");
+                        }}
+                        style={{
+                          flex: 1, padding: "8px", borderRadius: "8px", border: "none",
+                          background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                          color: "white", cursor: "pointer", fontSize: "0.8rem", fontWeight: "bold",
+                        }}
+                      >✏️ Editar</button>
+                      <button onClick={() => cancelarMiOferta(venta)} style={{
+                        flex: 1, padding: "8px", borderRadius: "8px",
+                        border: "1px solid #334155", background: "transparent",
+                        color: "#64748b", cursor: "pointer", fontSize: "0.8rem",
+                      }}>🗑️ Cancelar</button>
+                    </div>
                   </div>
                 ))
               )}
