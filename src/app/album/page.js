@@ -888,6 +888,7 @@ export default function AlbumPage() {
                 { icon: "🏆", label: "Ranking", path: "/ranking" },
                 { icon: "📢", label: "Feed", path: "/feed" },
                 { icon: "😈", label: "Tortura", path: "/tortura" },
+                { icon: "🏪", label: "Tienda", path: "/tienda" },
               ].map((item) => (
                 <button key={item.path} onClick={() => { setShowOtros(false); router.push(item.path); }} style={{
                   display: "flex", flexDirection: "column", alignItems: "center",

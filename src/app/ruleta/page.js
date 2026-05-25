@@ -1,8 +1,8 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, setDoc, getDocs, collection, writeBatch } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, runTransaction } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
@@ -35,7 +35,8 @@ export default function RuletaPage() {
   const [resultado,          setResultado]          = useState(null);
   const [countdown,          setCountdown]          = useState("");
   const [jugadoresFiltrados, setJugadoresFiltrados] = useState([]);
-  const router = useRouter();
+  const router        = useRouter();
+  const procesandoRef = useRef(false);
 
   const HOY = new Date().toLocaleDateString("en-CA");
 
@@ -114,6 +115,8 @@ export default function RuletaPage() {
   /* ── Lanzar giro ─────────────────────────────────────────────── */
   const girar = () => {
     if (fase !== "intro") return;
+    if (procesandoRef.current) return;
+    procesandoRef.current = true;
     if (navigator.vibrate) navigator.vibrate(50);
     const idx = elegirSector();
     setWinnerIdx(idx);
@@ -124,11 +127,14 @@ export default function RuletaPage() {
     setTimeout(() => {
       if (navigator.vibrate) navigator.vibrate([80, 40, 180]);
       setFase("revelando");
+      procesandoRef.current = false;
     }, SPIN_DURATION + 200);
   };
 
   /* ── Continuar tras ver el resultado ─────────────────────────── */
   const continuarTrasRevelacion = () => {
+    if (procesandoRef.current) return;
+    procesandoRef.current = true;
     const sector = SECTORES[winnerIdx];
     if (sector.id.startsWith("robar_")) {
       const rareza = sector.id.replace("robar_", "");
@@ -141,19 +147,23 @@ export default function RuletaPage() {
         )
       );
       setFase("seleccion");
+      procesandoRef.current = false; // no async: liberar para handleSeleccion
     } else if (sector.id === "maldicion") {
       setJugadoresFiltrados(todosJugadores);
       setFase("seleccion");
+      procesandoRef.current = false; // no async: liberar para handleSeleccion
     } else {
       setFase("ejecutando");
-      _ejecutar(winnerIdx, null, null);
+      _ejecutar(winnerIdx, null, null); // libera en finally de _ejecutar
     }
   };
 
   /* ── Seleccionar víctima ─────────────────────────────────────── */
   const handleSeleccion = (jugador) => {
+    if (procesandoRef.current) return;
+    procesandoRef.current = true;
     setFase("ejecutando");
-    _ejecutar(winnerIdx, jugador.id, jugador);
+    _ejecutar(winnerIdx, jugador.id, jugador); // libera en finally de _ejecutar
   };
 
   /* ── Dispatcher de sectores ──────────────────────────────────── */
@@ -165,99 +175,132 @@ export default function RuletaPage() {
       else if (sector.id === "quema")              await _quemar();
       else if (sector.id === "maldicion")          await _maldecir(victimId, victimData);
       else                                         await _perdedor();
-    } catch (err) { console.error(err); setFase("done"); }
+    } catch (err) {
+      console.error(err);
+      setFase("done");
+    } finally {
+      procesandoRef.current = false;
+    }
   };
 
   /* ── Sobre gratis ────────────────────────────────────────────── */
   const _sobre = async () => {
-    await setDoc(doc(db, "usuarios", user.uid), {
-      sobresRuleta: (datosUsuario?.sobresRuleta || 0) + 1,
-      fechaRuleta:  HOY,
-    }, { merge: true });
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "usuarios", user.uid);
+      const snap = await tx.get(ref);
+      const data = snap.data() || {};
+      if (data.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
+      tx.update(ref, {
+        sobresRuleta: (data.sobresRuleta || 0) + 1,
+        fechaRuleta:  HOY,
+      });
+    });
     setResultado({ tipo: "sobre" });
     setFase("done");
   };
 
   /* ── Robo ────────────────────────────────────────────────────── */
   const _robar = async (victimId, victimData, rareza) => {
-    const victimCromos = victimData?.cromos || [];
-    const disponibles  = victimCromos.filter((c) => {
-      const info = CROMOS.find((x) => x.id === c.cromoId);
-      return info?.rareza === rareza && c.cantidad > 0;
-    });
-
-    if (disponibles.length === 0) {
-      await setDoc(doc(db, "usuarios", user.uid), { fechaRuleta: HOY }, { merge: true });
-      setResultado({ tipo: "robo_vacio", rareza });
-      setFase("done");
-      return;
-    }
-
-    const elegida   = disponibles[Math.floor(Math.random() * disponibles.length)];
-    const cromoInfo = CROMOS.find((c) => c.id === elegida.cromoId);
     const victimName = victimData?.nombre || victimData?.email || "alguien";
+    let cromoInfo  = null;
+    let robovacio  = false;
 
-    // Batch: quitar de víctima, añadir a mí
-    const batch = writeBatch(db);
+    await runTransaction(db, async (tx) => {
+      const userRef   = doc(db, "usuarios", user.uid);
+      const victimRef = doc(db, "usuarios", victimId);
+      const [userSnap, victimSnap] = await Promise.all([tx.get(userRef), tx.get(victimRef)]);
 
-    const vAct = victimCromos.map((c) =>
-      c.cromoId === elegida.cromoId
-        ? c.cantidad <= 1 ? null : { ...c, cantidad: c.cantidad - 1 }
-        : c
-    ).filter(Boolean);
-    batch.update(doc(db, "usuarios", victimId), { cromos: vAct });
+      const userData    = userSnap.data()   || {};
+      const victimData2 = victimSnap.data() || {};
 
-    const mis = datosUsuario?.cromos || [];
-    const ex  = mis.find((c) => c.cromoId === elegida.cromoId);
-    const misAct = ex
-      ? mis.map((c) => c.cromoId === elegida.cromoId ? { ...c, cantidad: c.cantidad + 1 } : c)
-      : [...mis, { cromoId: elegida.cromoId, cantidad: 1, fechaObtenido: HOY, pegado: false }];
-    batch.update(doc(db, "usuarios", user.uid), { cromos: misAct, fechaRuleta: HOY });
-    await batch.commit();
+      if (userData.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
 
-    addFeedEvent({
-      type:    "robo_ruleta",
-      userName: "???",
-      details: `🔫 A ${victimName} le han robado una ${rareza} usando la ruleta rusa.`,
+      const victimCromos = victimData2.cromos || [];
+      const disponibles  = victimCromos.filter((c) => {
+        const info = CROMOS.find((x) => x.id === c.cromoId);
+        return info?.rareza === rareza && c.cantidad > 0;
+      });
+
+      if (disponibles.length === 0) {
+        tx.update(userRef, { fechaRuleta: HOY });
+        robovacio = true;
+        return;
+      }
+
+      const elegida = disponibles[Math.floor(Math.random() * disponibles.length)];
+      cromoInfo = CROMOS.find((c) => c.id === elegida.cromoId);
+
+      const vAct = victimCromos.map((c) =>
+        c.cromoId === elegida.cromoId
+          ? c.cantidad <= 1 ? null : { ...c, cantidad: c.cantidad - 1 }
+          : c
+      ).filter(Boolean);
+      tx.update(victimRef, { cromos: vAct });
+
+      const mis = userData.cromos || [];
+      const ex  = mis.find((c) => c.cromoId === elegida.cromoId);
+      const misAct = ex
+        ? mis.map((c) => c.cromoId === elegida.cromoId ? { ...c, cantidad: c.cantidad + 1 } : c)
+        : [...mis, { cromoId: elegida.cromoId, cantidad: 1, fechaObtenido: HOY, pegado: false }];
+      tx.update(userRef, { cromos: misAct, fechaRuleta: HOY });
     });
 
-    setResultado({ tipo: "robo", cromo: cromoInfo, rareza, victimName });
+    if (robovacio) {
+      setResultado({ tipo: "robo_vacio", rareza });
+    } else {
+      addFeedEvent({
+        type:     "robo_ruleta",
+        userName: "???",
+        details:  `🔫 A ${victimName} le han robado una ${rareza} usando la ruleta rusa.`,
+      });
+      setResultado({ tipo: "robo", cromo: cromoInfo, rareza, victimName });
+    }
     setFase("done");
   };
 
   /* ── Quema ───────────────────────────────────────────────────── */
   const _quemar = async () => {
-    const cromosAct = datosUsuario?.cromos || [];
-    const pegadas   = cromosAct.filter((c) => c.pegado !== false && c.cantidad > 0);
+    let cromoInfo   = null;
+    let quemaEscape = false;
 
-    if (pegadas.length === 0) {
-      await setDoc(doc(db, "usuarios", user.uid), { fechaRuleta: HOY }, { merge: true });
-      setResultado({ tipo: "quema_escape" });
-      setFase("done");
-      return;
-    }
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "usuarios", user.uid);
+      const snap = await tx.get(ref);
+      const data = snap.data() || {};
 
-    const victima   = pegadas[Math.floor(Math.random() * pegadas.length)];
-    const cromoInfo = CROMOS.find((c) => c.id === victima.cromoId);
+      if (data.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
 
-    const cromosAct2 = cromosAct.map((c) => {
-      if (c.cromoId !== victima.cromoId) return c;
-      if (c.cantidad <= 1)               return null;
-      return { ...c, cantidad: c.cantidad - 1, pegado: false };
-    }).filter(Boolean);
+      const cromosAct = data.cromos || [];
+      const pegadas   = cromosAct.filter((c) => c.pegado !== false && c.cantidad > 0);
 
-    await setDoc(doc(db, "usuarios", user.uid), {
-      cromos:      cromosAct2,
-      fechaRuleta: HOY,
-    }, { merge: true });
+      if (pegadas.length === 0) {
+        tx.update(ref, { fechaRuleta: HOY });
+        quemaEscape = true;
+        return;
+      }
 
-    addFeedEvent({
-      type:    "quema_ruleta",
-      userName: datosUsuario?.nombre,
-      details: `🔥 ${cromoInfo?.nombre ?? "una carta"} de ${datosUsuario?.nombre} ha ardido en la ruleta. Minuto de silencio. 🕯️`,
+      const victima = pegadas[Math.floor(Math.random() * pegadas.length)];
+      cromoInfo = CROMOS.find((c) => c.id === victima.cromoId);
+
+      const cromosAct2 = cromosAct.map((c) => {
+        if (c.cromoId !== victima.cromoId) return c;
+        if (c.cantidad <= 1)               return null;
+        return { ...c, cantidad: c.cantidad - 1, pegado: false };
+      }).filter(Boolean);
+
+      tx.update(ref, { cromos: cromosAct2, fechaRuleta: HOY });
     });
 
-    setResultado({ tipo: "quema", cromo: cromoInfo });
+    if (quemaEscape) {
+      setResultado({ tipo: "quema_escape" });
+    } else {
+      addFeedEvent({
+        type:     "quema_ruleta",
+        userName: datosUsuario?.nombre,
+        details:  `🔥 ${cromoInfo?.nombre ?? "una carta"} de ${datosUsuario?.nombre} ha ardido en la ruleta. Minuto de silencio. 🕯️`,
+      });
+      setResultado({ tipo: "quema", cromo: cromoInfo });
+    }
     setFase("done");
   };
 
@@ -268,15 +311,19 @@ export default function RuletaPage() {
     const tomorrowStr = tomorrow.toLocaleDateString("en-CA");
     const victimName  = victimData?.nombre || victimData?.email || "alguien";
 
-    const batch = writeBatch(db);
-    batch.update(doc(db, "usuarios", victimId), { fechaMaldicion: tomorrowStr });
-    batch.update(doc(db, "usuarios", user.uid), { fechaRuleta: HOY });
-    await batch.commit();
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "usuarios", user.uid);
+      const snap = await tx.get(ref);
+      const data = snap.data() || {};
+      if (data.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
+      tx.update(doc(db, "usuarios", victimId), { fechaMaldicion: tomorrowStr });
+      tx.update(ref, { fechaRuleta: HOY });
+    });
 
     addFeedEvent({
-      type:    "maldicion_ruleta",
+      type:     "maldicion_ruleta",
       userName: datosUsuario?.nombre,
-      details: `😈 ${datosUsuario?.nombre} ha maldecido a ${victimName}. Mañana solo podrá abrir 1 sobre. 💀`,
+      details:  `😈 ${datosUsuario?.nombre} ha maldecido a ${victimName}. Mañana solo podrá abrir 1 sobre. 💀`,
     });
 
     setResultado({ tipo: "maldicion", victimName });
@@ -285,7 +332,13 @@ export default function RuletaPage() {
 
   /* ── Perdedor ────────────────────────────────────────────────── */
   const _perdedor = async () => {
-    await setDoc(doc(db, "usuarios", user.uid), { fechaRuleta: HOY }, { merge: true });
+    await runTransaction(db, async (tx) => {
+      const ref  = doc(db, "usuarios", user.uid);
+      const snap = await tx.get(ref);
+      const data = snap.data() || {};
+      if (data.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
+      tx.update(ref, { fechaRuleta: HOY });
+    });
     setResultado({ tipo: "perdedor" });
     setFase("done");
   };
@@ -566,9 +619,24 @@ export default function RuletaPage() {
               </p>
               <button
                 onClick={async () => {
-                  await setDoc(doc(db, "usuarios", user.uid), { fechaRuleta: HOY }, { merge: true });
-                  setResultado({ tipo:"robo_vacio", rareza: winnerSector?.id.replace("robar_","") });
-                  setFase("done");
+                  if (procesandoRef.current) return;
+                  procesandoRef.current = true;
+                  try {
+                    await runTransaction(db, async (tx) => {
+                      const ref  = doc(db, "usuarios", user.uid);
+                      const snap = await tx.get(ref);
+                      const data = snap.data() || {};
+                      if (data.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
+                      tx.update(ref, { fechaRuleta: HOY });
+                    });
+                    setResultado({ tipo: "robo_vacio", rareza: winnerSector?.id.replace("robar_", "") });
+                    setFase("done");
+                  } catch (err) {
+                    console.error(err);
+                    setFase("done");
+                  } finally {
+                    procesandoRef.current = false;
+                  }
                 }}
                 style={{
                   padding:"12px 28px", borderRadius:"12px", border:"none",

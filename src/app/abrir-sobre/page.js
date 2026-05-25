@@ -204,7 +204,15 @@ export default function AbrirSobrePage() {
     let nuevoBonus = freshSobresBonus;
     const fechaUltima = datosUsuario?.fechaUltimaApertura || "";
     if (fechaUltima !== HOY) {
-      nuevaRacha = fechaUltima === getAyer() ? (datosUsuario?.rachaActual || 0) + 1 : 1;
+      // Protección de racha: si rachaProtegidaFecha === HOY, conservar racha sin sumar
+      const protegida = datosUsuario?.rachaProtegidaFecha === HOY;
+      if (protegida) {
+        nuevaRacha = datosUsuario?.rachaActual || 0;
+        // Consumir la protección
+        setDoc(doc(db, "usuarios", user.uid), { rachaProtegidaFecha: null }, { merge: true });
+      } else {
+        nuevaRacha = fechaUltima === getAyer() ? (datosUsuario?.rachaActual || 0) + 1 : 1;
+      }
       setRachaActual(nuevaRacha);
       if (nuevaRacha > 0 && nuevaRacha % 5 === 0) {
         nuevoBonus = (usandoBonus ? freshSobresBonus - 1 : freshSobresBonus) + 1;
@@ -323,25 +331,71 @@ export default function AbrirSobrePage() {
   };
 
   // ── MODO TEST ──────────────────────────────────────────────────────────────
-  // Simula que ha pasado un día: mueve fechaUltimaApertura a ayer y resetea
-  // el contador de sobres de hoy. Solo visible cuando rachaTestMode = true.
+  // Simula día normal: incrementa racha YA (sin abrir sobre), resetea sobres.
+  // fechaUltimaApertura = HOY para que el próximo sobre no vuelva a contar racha.
   const simularDia = async () => {
     if (!user) return;
     const ayer = getAyer();
+    const nuevaRacha = (datosUsuario?.rachaActual || 0) + 1;
+    const nuevoBonus = nuevaRacha % 5 === 0
+      ? (datosUsuario?.sobresBonus || 0) + 1
+      : (datosUsuario?.sobresBonus || 0);
     try {
       await setDoc(doc(db, "usuarios", user.uid), {
-        fechaUltimaApertura: ayer,
+        fechaUltimaApertura: HOY,
         fechaUltimoSobre:    ayer,
+        sobresAbiertosHoy:   0,
+        rachaActual:         nuevaRacha,
+        sobresBonus:         nuevoBonus,
+      }, { merge: true });
+      setSobresHoy(0);
+      setRachaActual(nuevaRacha);
+      setSobresBonus(nuevoBonus);
+      if (nuevaRacha % 5 === 0)
+        setRachaMsg(`🔥 ¡${nuevaRacha} días de racha! 🎁 +1 sobre bonus`);
+      setDatosUsuario(prev => ({
+        ...prev,
+        fechaUltimaApertura: HOY,
+        fechaUltimoSobre:    ayer,
+        sobresAbiertosHoy:   0,
+        rachaActual:         nuevaRacha,
+        sobresBonus:         nuevoBonus,
+      }));
+    } catch (err) { console.error("simularDia error:", err); }
+  };
+
+  // Rompe la racha: simula que han pasado varios días sin abrir.
+  // La racha se resetea a 1 al abrir el próximo sobre.
+  const romperRacha = async () => {
+    if (!user) return;
+    const haceVariosDias = new Date();
+    haceVariosDias.setDate(haceVariosDias.getDate() - 3);
+    const fechaAntigua = haceVariosDias.toLocaleDateString("en-CA");
+    try {
+      await setDoc(doc(db, "usuarios", user.uid), {
+        fechaUltimaApertura: fechaAntigua,
+        fechaUltimoSobre:    fechaAntigua,
         sobresAbiertosHoy:   0,
       }, { merge: true });
       setSobresHoy(0);
       setDatosUsuario(prev => ({
         ...prev,
-        fechaUltimaApertura: ayer,
-        fechaUltimoSobre:    ayer,
+        fechaUltimaApertura: fechaAntigua,
+        fechaUltimoSobre:    fechaAntigua,
         sobresAbiertosHoy:   0,
       }));
-    } catch (err) { console.error("simularDia error:", err); }
+    } catch (err) { console.error("romperRacha error:", err); }
+  };
+
+  // Activa la protección de racha para HOY (simula que ya llegó el día de mañana).
+  const activarProteccionTest = async () => {
+    if (!user) return;
+    try {
+      await setDoc(doc(db, "usuarios", user.uid), {
+        rachaProtegidaFecha: HOY,
+      }, { merge: true });
+      setDatosUsuario(prev => ({ ...prev, rachaProtegidaFecha: HOY }));
+    } catch (err) { console.error("activarProteccion error:", err); }
   };
   // ───────────────────────────────────────────────────────────────────────────
 
@@ -419,28 +473,41 @@ export default function AbrirSobrePage() {
           background: "linear-gradient(135deg, #7f1d1d, #991b1b)",
           border: "1px solid #ef4444", borderRadius: "12px",
           padding: "10px 14px", marginBottom: "12px",
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px",
         }}>
-          <div>
-            <p style={{ margin: 0, color: "#fca5a5", fontWeight: "bold", fontSize: "0.8rem" }}>
-              ⚠️ MODO TEST ACTIVO
-            </p>
-            <p style={{ margin: "2px 0 0", color: "#f87171", fontSize: "0.7rem" }}>
-              Racha actual: {rachaActual} · Bonus: {sobresBonus} · Sobres hoy: {sobresHoy}
-            </p>
-          </div>
-          {fase === "idle" && (
+          <p style={{ margin: "0 0 2px", color: "#fca5a5", fontWeight: "bold", fontSize: "0.8rem" }}>
+            ⚠️ MODO TEST ACTIVO
+          </p>
+          <p style={{ margin: "0 0 8px", color: "#f87171", fontSize: "0.7rem" }}>
+            🔥 Racha: {rachaActual} · 🎁 Bonus: {sobresBonus} · 📦 Sobres: {sobresHoy}
+            {datosUsuario?.rachaProtegidaFecha === HOY && " · 🛡️ PROTEGIDA"}
+          </p>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             <button
               onClick={simularDia}
               style={{
-                padding: "8px 14px", borderRadius: "8px", border: "none",
-                background: "#ef4444", color: "white", fontWeight: "bold",
-                fontSize: "0.8rem", cursor: "pointer", whiteSpace: "nowrap",
+                padding: "7px 10px", borderRadius: "8px", border: "none",
+                background: "#16a34a", color: "white", fontWeight: "bold",
+                fontSize: "0.75rem", cursor: "pointer",
               }}
-            >
-              ⏭ Simular día
-            </button>
-          )}
+            >⏭ Día OK</button>
+            <button
+              onClick={romperRacha}
+              style={{
+                padding: "7px 10px", borderRadius: "8px", border: "none",
+                background: "#dc2626", color: "white", fontWeight: "bold",
+                fontSize: "0.75rem", cursor: "pointer",
+              }}
+            >💀 Romper racha</button>
+            <button
+              onClick={activarProteccionTest}
+              style={{
+                padding: "7px 10px", borderRadius: "8px", border: "none",
+                background: datosUsuario?.rachaProtegidaFecha === HOY ? "#475569" : "#7c3aed",
+                color: "white", fontWeight: "bold",
+                fontSize: "0.75rem", cursor: "pointer",
+              }}
+            >{datosUsuario?.rachaProtegidaFecha === HOY ? "🛡️ Activa" : "🛡️ Proteger"}</button>
+          </div>
         </div>
       )}
 
