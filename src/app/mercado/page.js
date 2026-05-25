@@ -39,8 +39,10 @@ export default function MercadoPage() {
   const [cromoAVender, setCromoAVender] = useState(null);
 
   // Hacer oferta (overlay dentro de la tab Mercado)
-  const [ventaSeleccionada, setVentaSeleccionada] = useState(null);
-  const [cromosOferta,      setCromosOferta]      = useState([]);
+  const [ventaSeleccionada,  setVentaSeleccionada]  = useState(null);
+  const [cromosOferta,       setCromosOferta]       = useState([]);
+  const [vendedorCromos,     setVendedorCromos]     = useState(null); // inventario del vendedor
+  const [vendedorCargando,   setVendedorCargando]   = useState(false);
 
   // Modal "Ver y aceptar ofertas" (solo para el vendedor)
   const [ventaVerOfertas, setVentaVerOfertas] = useState(null);
@@ -104,6 +106,16 @@ export default function MercadoPage() {
   useEffect(() => {
     if (tab === "historial" && user) loadHistorial();
   }, [tab, user]);
+
+  // Cargar inventario del vendedor cuando se abre el panel de oferta
+  useEffect(() => {
+    if (!ventaSeleccionada) { setVendedorCromos(null); return; }
+    setVendedorCargando(true);
+    getDoc(doc(db, "usuarios", ventaSeleccionada.vendedorId))
+      .then((snap) => setVendedorCromos(snap.exists() ? snap.data().cromos || [] : []))
+      .catch(() => setVendedorCromos([]))
+      .finally(() => setVendedorCargando(false));
+  }, [ventaSeleccionada]);
 
   // ── Helpers de UI ───────────────────────────────────────────────────────────
   const showMsg = (text, tipo = "") => {
@@ -622,20 +634,52 @@ export default function MercadoPage() {
               <p style={{ color: "#64748b", textAlign: "center", padding: "20px" }}>
                 No tienes cartas repetidas disponibles
               </p>
+            ) : vendedorCargando ? (
+              <div style={{ textAlign: "center", padding: "20px", color: "#64748b", fontSize: "0.85rem" }}>
+                Cargando inventario del vendedor…
+              </div>
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "20px" }}>
                 {getMisRepetidos().map((cromo) => {
                   const sel = cromosOferta.includes(cromo.cromoId);
+
+                  // ¿Qué cantidad tiene el vendedor de esta carta?
+                  const vendCantidad = vendedorCromos
+                    ? (vendedorCromos.find((c) => c.cromoId === cromo.cromoId)?.cantidad || 0)
+                    : null;
+
+                  // Badge: solo visible si tenemos los datos del vendedor
+                  const badge = vendedorCromos === null ? null
+                    : vendCantidad === 0
+                      ? { label: "✨ Le interesa", bg: "#065f46", color: "#6ee7b7" }
+                      : vendCantidad === 1
+                        ? { label: "Ya la tiene",  bg: "#1e293b", color: "#64748b" }
+                        : { label: "Le sobra",      bg: "#451a03", color: "#fcd34d" };
+
                   return (
                     <div key={cromo.cromoId} onClick={() => toggleOferta(cromo.cromoId)} style={{
                       borderRadius: "12px", overflow: "hidden", cursor: "pointer",
                       position: "relative",
                       border:     sel ? "3px solid #10b981" : `2px solid ${getBorder(cromo.info.rareza)}`,
-                      opacity:    sel ? 1 : 0.7,
+                      opacity:    sel ? 1 : (vendCantidad > 0 ? 0.55 : 0.85),
                       transform:  sel ? "scale(1.05)" : "scale(1)",
                       transition: "all 0.2s",
                     }}>
                       <img src={cromo.info.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }} />
+
+                      {/* Badge "Le interesa / Ya la tiene / Le sobra" */}
+                      {badge && !sel && (
+                        <div style={{
+                          position: "absolute", top: "4px", left: "4px", right: "4px",
+                          background: badge.bg, color: badge.color,
+                          fontSize: "0.48rem", fontWeight: "bold",
+                          padding: "2px 4px", borderRadius: "4px",
+                          textAlign: "center", letterSpacing: "0.3px",
+                        }}>
+                          {badge.label}
+                        </div>
+                      )}
+
                       {sel && (
                         <div style={{
                           position: "absolute", inset: 0,
