@@ -15,3 +15,10 @@ export const isRuletaAvailable = (features) => {
   if (features?.ruletaFecha) return new Date() >= new Date(features.ruletaFecha);
   return false;
 };
+
+export const isTiendaAvailable = (features) => {
+  if (features?.tiendaDesactivada) return false;
+  if (features?.tienda === true) return true;
+  if (features?.tiendaFecha) return new Date() >= new Date(features.tiendaFecha);
+  return false;
+};

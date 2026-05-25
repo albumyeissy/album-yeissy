@@ -365,7 +365,7 @@ export default function AbrirSobrePage() {
   };
 
   // Rompe la racha: simula que han pasado varios días sin abrir.
-  // La racha se resetea a 1 al abrir el próximo sobre.
+  // La racha se resetea a 0 visualmente y a 1 al abrir el próximo sobre.
   const romperRacha = async () => {
     if (!user) return;
     const haceVariosDias = new Date();
@@ -376,13 +376,16 @@ export default function AbrirSobrePage() {
         fechaUltimaApertura: fechaAntigua,
         fechaUltimoSobre:    fechaAntigua,
         sobresAbiertosHoy:   0,
+        rachaActual:         0,
       }, { merge: true });
       setSobresHoy(0);
+      setRachaActual(0);
       setDatosUsuario(prev => ({
         ...prev,
         fechaUltimaApertura: fechaAntigua,
         fechaUltimoSobre:    fechaAntigua,
         sobresAbiertosHoy:   0,
+        rachaActual:         0,
       }));
     } catch (err) { console.error("romperRacha error:", err); }
   };
@@ -479,7 +482,11 @@ export default function AbrirSobrePage() {
           </p>
           <p style={{ margin: "0 0 8px", color: "#f87171", fontSize: "0.7rem" }}>
             🔥 Racha: {rachaActual} · 🎁 Bonus: {sobresBonus} · 📦 Sobres: {sobresHoy}
-            {datosUsuario?.rachaProtegidaFecha === HOY && " · 🛡️ PROTEGIDA"}
+            {datosUsuario?.rachaProtegidaFecha === HOY
+              ? " · 🛡️ PROTEGIDA HOY"
+              : datosUsuario?.rachaProtegidaFecha
+                ? ` · 🛡️ pendiente (${datosUsuario.rachaProtegidaFecha})`
+                : ""}
           </p>
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
             <button
@@ -506,7 +513,13 @@ export default function AbrirSobrePage() {
                 color: "white", fontWeight: "bold",
                 fontSize: "0.75rem", cursor: "pointer",
               }}
-            >{datosUsuario?.rachaProtegidaFecha === HOY ? "🛡️ Activa" : "🛡️ Proteger"}</button>
+            >
+              {datosUsuario?.rachaProtegidaFecha === HOY
+                ? "🛡️ Activa hoy"
+                : datosUsuario?.rachaProtegidaFecha
+                  ? "🛡️ Activar hoy"   // ya comprada, mover a hoy para testear
+                  : "🛡️ Proteger"}     // sin protección, activar directamente
+            </button>
           </div>
         </div>
       )}

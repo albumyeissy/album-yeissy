@@ -6,7 +6,7 @@ import { doc, getDoc, setDoc, getDocs, collection } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import { PAGINAS, CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
-import { getFeatures, isRuletaAvailable } from "../../lib/featuresHelper";
+import { getFeatures, isRuletaAvailable, isTiendaAvailable } from "../../lib/featuresHelper";
 
 export default function AlbumPage() {
   const [user, setUser] = useState(null);
@@ -26,6 +26,7 @@ export default function AlbumPage() {
   const [sobreCountdown, setSobreCountdown] = useState("");
   const [ofertasPendientes, setOfertasPendientes] = useState(0);
   const [ruletaDisponible, setRuletaDisponible] = useState(false);
+  const [tiendaDisponible, setTiendaDisponible] = useState(false);
   const router = useRouter();
   const [previewCromo, setPreviewCromo] = useState(null);
   const [previewFlipped, setPreviewFlipped] = useState(false);
@@ -55,6 +56,7 @@ export default function AlbumPage() {
             getFeatures(),
           ]);
           setRuletaDisponible(isRuletaAvailable(feats));
+          setTiendaDisponible(isTiendaAvailable(feats));
           if (snap.exists()) {
             const data = snap.data();
             setMisCromos(data.cromos || []);
@@ -888,7 +890,6 @@ export default function AlbumPage() {
                 { icon: "🏆", label: "Ranking", path: "/ranking" },
                 { icon: "📢", label: "Feed", path: "/feed" },
                 { icon: "😈", label: "Tortura", path: "/tortura" },
-                { icon: "🏪", label: "Tienda", path: "/tienda" },
               ].map((item) => (
                 <button key={item.path} onClick={() => { setShowOtros(false); router.push(item.path); }} style={{
                   display: "flex", flexDirection: "column", alignItems: "center",
@@ -900,6 +901,26 @@ export default function AlbumPage() {
                   <span style={{ fontSize: "0.75rem", color: "#94a3b8" }}>{item.label}</span>
                 </button>
               ))}
+
+              {/* Tienda */}
+              <button
+                onClick={() => { setShowOtros(false); router.push("/tienda"); }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  gap: "6px", padding: "14px 8px", borderRadius: "14px",
+                  border: tiendaDisponible ? "1px solid #f59e0b" : "1px solid #334155",
+                  background: tiendaDisponible ? "rgba(245,158,11,0.08)" : "#0f172a",
+                  color: "white", cursor: "pointer", position: "relative",
+                }}
+              >
+                <span style={{ fontSize: "2rem" }}>{tiendaDisponible ? "🏪" : "🔒"}</span>
+                <span style={{ fontSize: "0.75rem", color: tiendaDisponible ? "#fbbf24" : "#64748b" }}>
+                  Tienda
+                </span>
+                {!tiendaDisponible && (
+                  <span style={{ fontSize: "0.58rem", color: "#475569" }}>28 may</span>
+                )}
+              </button>
 
               {/* Ruleta Rusa */}
               <button

@@ -8,6 +8,9 @@ import {
 import { useRouter } from "next/navigation";
 import { CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
+import { getFeatures, isTiendaAvailable } from "../../lib/featuresHelper";
+
+const TIENDA_RELEASE = new Date("2026-05-28T00:00:00");
 
 // ─── Economía ─────────────────────────────────────────────────────────────────
 const PRECIO_VENTA = { legendaria: 8, rara: 4, comun: 1, mitica: 0 };
@@ -27,6 +30,8 @@ const RAREZA_ORDER = { mitica: 3, legendaria: 2, rara: 1, comun: 0 };
 export default function TiendaPage() {
   const [user, setUser]           = useState(null);
   const [loading, setLoading]     = useState(true);
+  const [bloqueada, setBloqueada] = useState(false);
+  const [countdown, setCountdown] = useState("");
   const [misDatos, setMisDatos]   = useState(null);
   const [monedas, setMonedas]     = useState(0);
   const [comprasHoy, setComprasHoy] = useState(0);
@@ -56,13 +61,38 @@ export default function TiendaPage() {
     return d.toLocaleDateString("en-CA");
   };
 
+  // ── Countdown (sólo visible cuando bloqueada) ────────────────────────────────
+  useEffect(() => {
+    const update = () => {
+      const diff = TIENDA_RELEASE - new Date();
+      if (diff <= 0) { setCountdown("00:00:00"); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      setCountdown(
+        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      );
+    };
+    update();
+    const iv = setInterval(update, 1000);
+    return () => clearInterval(iv);
+  }, []);
+
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (!u) { router.push("/"); return; }
       setUser(u);
       try {
-        const snap = await getDoc(doc(db, "usuarios", u.uid));
+        const [snap, feats] = await Promise.all([
+          getDoc(doc(db, "usuarios", u.uid)),
+          getFeatures(),
+        ]);
+        if (!isTiendaAvailable(feats)) {
+          setBloqueada(true);
+          setLoading(false);
+          return;
+        }
         if (snap.exists()) {
           const d = snap.data();
           // Monedas: inicializar a 50 si undefined
@@ -369,7 +399,59 @@ export default function TiendaPage() {
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#0f172a" }}>
-        <p style={{ fontSize: "1.4rem" }}>Cargando tienda...</p>
+        <p style={{ fontSize: "1.4rem", color: "white" }}>Cargando tienda...</p>
+      </div>
+    );
+  }
+
+  // ── Pantalla de bloqueada ────────────────────────────────────────────────────
+  if (bloqueada) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0f172a", color: "white", padding: "20px" }}>
+        <style>{`
+          @keyframes fadeInUp { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes cdPulse  { 0%,100%{color:#94a3b8} 50%{color:#f59e0b} }
+        `}</style>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "28px" }}>
+          <button
+            onClick={() => router.push("/album")}
+            style={{ padding: "8px 16px", borderRadius: "10px", border: "1px solid #475569", background: "transparent", color: "#94a3b8", cursor: "pointer" }}
+          >← Álbum</button>
+          <h1 style={{ margin: 0, fontSize: "1.4rem" }}>🏪 Tienda</h1>
+        </div>
+        <div style={{ textAlign: "center", animation: "fadeInUp 0.5s" }}>
+          <div style={{ fontSize: "5rem", marginBottom: "16px" }}>🔒</div>
+          <h2 style={{ fontSize: "1.5rem", marginBottom: "8px" }}>Próximamente</h2>
+          <p style={{ color: "#64748b", marginBottom: "28px", lineHeight: 1.6 }}>
+            La tienda abrirá el<br />
+            <strong style={{ color: "#94a3b8" }}>jueves 28 de mayo a las 00:00</strong>
+          </p>
+          <div style={{
+            background: "#1e293b", borderRadius: "16px",
+            padding: "20px 28px", display: "inline-block",
+            border: "1px solid #334155", marginBottom: "36px",
+          }}>
+            <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "8px" }}>Disponible en:</p>
+            <p style={{
+              fontSize: "2.6rem", fontWeight: "bold", fontFamily: "monospace",
+              margin: 0, letterSpacing: "3px", animation: "cdPulse 2s infinite",
+            }}>{countdown}</p>
+          </div>
+          <p style={{ color: "#475569", fontSize: "0.75rem", marginBottom: "10px", letterSpacing: "1px" }}>QUÉ ENCONTRARÁS</p>
+          <div style={{ maxWidth: "290px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+            {ITEMS.map((it) => (
+              <div key={it.id} style={{
+                display: "flex", alignItems: "center", gap: "10px",
+                padding: "9px 14px", background: "#1e293b",
+                borderRadius: "10px", border: "1px solid #334155",
+              }}>
+                <span style={{ fontSize: "1.3rem" }}>{it.emoji}</span>
+                <span style={{ fontSize: "0.85rem", color: "#94a3b8", flex: 1, textAlign: "left" }}>{it.nombre}</span>
+                <span style={{ fontSize: "0.75rem", color: "#f59e0b", fontWeight: "bold" }}>{it.precio} 🪙</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
