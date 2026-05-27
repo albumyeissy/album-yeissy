@@ -31,6 +31,7 @@ export default function AbrirSobrePage() {
   const [rachaTestMode, setRachaTestMode] = useState(false);
   const dragStartY = useRef(null);
   const dragProgressRef = useRef(0);
+  const abriendoRef = useRef(false);
   const router = useRouter();
 
   // Fecha local (no UTC) para que el día cambie a medianoche local, no a las 2am
@@ -128,8 +129,11 @@ export default function AbrirSobrePage() {
     const progress = Math.min(Math.max(diff / 120, 0), 1);
     dragProgressRef.current = progress; setDragProgress(progress);
   };
-  const handleTouchEnd = () => {
-    if (dragProgressRef.current >= 0.5) iniciarApertura();
+  const handleTouchEnd = (e) => {
+    if (dragProgressRef.current >= 0.5) {
+      e.preventDefault(); // evita que el browser genere un click sintético tras el touchend
+      iniciarApertura();
+    }
     dragProgressRef.current = 0; setDragProgress(0); dragStartY.current = null;
   };
 
@@ -140,6 +144,9 @@ export default function AbrirSobrePage() {
 
   const iniciarApertura = async () => {
     if (!puedeAbrir || fase !== "idle") return;
+    // Guard contra doble ejecución: swipe dispara touchend + click sintético en mobile
+    if (abriendoRef.current) return;
+    abriendoRef.current = true;
 
     // --- Anti multi-device: reclamar slot de forma atómica en Firestore ---
     // Si dos dispositivos abren a la vez, solo uno pasa la transacción.
@@ -175,6 +182,7 @@ export default function AbrirSobrePage() {
       setSobresHoy(freshSobresHoy);
       setSobresBonus(freshSobresBonus);
       setSobresRuleta(freshSobresRuleta);
+      abriendoRef.current = false;
       return;
     }
 
@@ -188,6 +196,7 @@ export default function AbrirSobrePage() {
     if (!usandoBonus && !usandoRuleta) setSobresHoy(freshSobresHoy + 1);
     if (usandoBonus)  setSobresBonus(freshSobresBonus - 1);
     if (usandoRuleta) setSobresRuleta(freshSobresRuleta - 1);
+    abriendoRef.current = false; // a partir de aquí fase cambia a "abriendo", el guard ya no hace falta
 
     setFase("abriendo");
     setDragProgress(1);
