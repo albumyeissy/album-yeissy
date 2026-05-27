@@ -142,19 +142,30 @@ export default function MercadoPage() {
     Math.max(0, Math.round((new Date(fechaExpiracion) - Date.now()) / 3600000));
 
   // ── Estado derivado ─────────────────────────────────────────────────────────
-  // Slots diarios — se marcan en el doc del usuario con fechaUltimaVenta / fechaUltimaOferta
-  const yaVendiHoy  = misDatos?.fechaUltimaVenta  === HOY;
-  const yaOfertHoy  = misDatos?.fechaUltimaOferta === HOY;
+  const yaVendiHoy  = misDatos?.fechaUltimaVenta === HOY;
+
+  // Ofertas: hasta 3 creaciones/día + 1 intercambio completado/día como ofertante
+  const propuestasHoyCount       = misDatos?.fechaUltimaOferta          === HOY ? (misDatos?.propuestasHoy       || 0) : 0;
+  const intercambiosOfertaHoyCount = misDatos?.fechaUltimaIntercambioOferta === HOY ? (misDatos?.intercambiosOfertaHoy || 0) : 0;
+  const puedeHacerOferta  = propuestasHoyCount < 3 && intercambiosOfertaHoyCount < 1;
+  const ofertasRestantes  = Math.max(0, 3 - propuestasHoyCount);
 
   const misVentas   = ventas.filter((v) => v.vendedorId === user?.uid);
 
-  // Repetidos disponibles: cantidad > 1 y no comprometidos en mis ventas activas
+  // Repetidos disponibles: carta con (cantidad - reservada) > 1
+  // Fix: si una carta está en venta, se reserva 1 pero las demás siguen disponibles para ofertar
   const getMisRepetidos = () => {
     if (!misDatos?.cromos) return [];
     const enVenta = new Set(misVentas.map((v) => v.cromoId));
     return misDatos.cromos
-      .filter((c) => c.cantidad > 1 && !enVenta.has(c.cromoId))
-      .map((c) => ({ ...c, info: getCromoInfo(c.cromoId), sobrantes: c.cantidad - 1 }))
+      .filter((c) => {
+        const reservada = enVenta.has(c.cromoId) ? 1 : 0;
+        return (c.cantidad - reservada) > 1;
+      })
+      .map((c) => {
+        const reservada = enVenta.has(c.cromoId) ? 1 : 0;
+        return { ...c, info: getCromoInfo(c.cromoId), sobrantes: c.cantidad - 1 - reservada };
+      })
       .filter((c) => c.info);
   };
 
@@ -193,6 +204,9 @@ export default function MercadoPage() {
 
         if (datos.fechaUltimaVenta === HOY) throw new Error("ya-vendiste-hoy");
 
+        const cartaActual = (datos.cromos || []).find((c) => c.cromoId === cromoAVender);
+        if (!cartaActual || cartaActual.cantidad < 2) throw new Error("sin-repetidas");
+
         const ventaRef = doc(collection(db, "ventas"));
         const ahora    = new Date();
         const exp      = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
@@ -216,14 +230,17 @@ export default function MercadoPage() {
       showMsg("✅ Carta puesta en el mercado (24h)", "success");
       await loadData(user.uid);
     } catch (err) {
-      if (err.message === "ya-vendiste-hoy")
-        showMsg("❌ Ya has puesto una carta a la venta hoy", "error");
-      else { showMsg("❌ Error al poner en venta", "error"); console.error(err); }
+      const msgs = {
+        "ya-vendiste-hoy": "❌ Ya has puesto una carta a la venta hoy",
+        "sin-repetidas":   "❌ Necesitas tener esa carta repetida para venderla",
+      };
+      showMsg(msgs[err.message] || "❌ Error al poner en venta", "error");
+      if (!msgs[err.message]) console.error(err);
     }
   };
 
   // ── Acción: Hacer oferta ────────────────────────────────────────────────────
-  // Verifica slot diario + unicidad de oferta por usuario de forma atómica.
+  // Límites: 3 creaciones/día y 1 intercambio completado/día. Atómico.
   const hacerOferta = async () => {
     if (!ventaSeleccionada || !cromosOferta.length) return;
     if (!cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)) return;
@@ -233,16 +250,20 @@ export default function MercadoPage() {
         const userRef   = doc(db, "usuarios", user.uid);
         const ventaRef  = doc(db, "ventas", ventaSeleccionada.id);
 
-        // Reads (deben ir antes de cualquier write en una transacción)
         const userSnap  = await tx.get(userRef);
         const ventaSnap = await tx.get(ventaRef);
 
         const datos = userSnap.data() || {};
-        if (datos.fechaUltimaOferta === HOY) throw new Error("ya-ofert-hoy");
+        const freshPropuestas    = datos.fechaUltimaOferta             === HOY ? (datos.propuestasHoy       || 0) : 0;
+        const freshIntercambios  = datos.fechaUltimaIntercambioOferta  === HOY ? (datos.intercambiosOfertaHoy || 0) : 0;
 
-        if (!ventaSnap.exists())                           throw new Error("venta-no-existe");
+        if (freshPropuestas  >= 3) throw new Error("propuestas-agotadas");
+        if (freshIntercambios >= 1) throw new Error("ya-intercambio-hoy");
+
+        if (!ventaSnap.exists()) throw new Error("venta-no-existe");
         const ventaData = ventaSnap.data();
         if (new Date() > new Date(ventaData.fechaExpiracion)) throw new Error("venta-expirada");
+        if (ventaData.vendedorId === user.uid) throw new Error("no-autotrade");
 
         const yaOferto = (ventaData.ofertas || []).some((o) => o.ofertanteId === user.uid);
         if (yaOferto) throw new Error("ya-ofert-aqui");
@@ -257,7 +278,10 @@ export default function MercadoPage() {
           fecha: new Date().toISOString(),
         };
 
-        tx.set(userRef, { fechaUltimaOferta: HOY }, { merge: true });
+        tx.set(userRef, {
+          propuestasHoy:   freshPropuestas + 1,
+          fechaUltimaOferta: HOY,
+        }, { merge: true });
         tx.update(ventaRef, { ofertas: [...(ventaData.ofertas || []), nuevaOferta] });
       });
 
@@ -268,10 +292,12 @@ export default function MercadoPage() {
       await loadData(user.uid);
     } catch (err) {
       const msgs = {
-        "ya-ofert-hoy":    "❌ Ya has hecho una oferta hoy",
-        "venta-no-existe": "❌ Esta venta ya no existe",
-        "venta-expirada":  "❌ Esta venta ha caducado",
-        "ya-ofert-aqui":   "❌ Ya tienes una oferta en esta venta",
+        "propuestas-agotadas": "❌ Ya has agotado tus 3 ofertas de hoy",
+        "ya-intercambio-hoy":  "❌ Ya completaste un intercambio hoy",
+        "no-autotrade":        "❌ No puedes ofertar en tu propia venta",
+        "venta-no-existe":     "❌ Esta venta ya no existe",
+        "venta-expirada":      "❌ Esta venta ha caducado",
+        "ya-ofert-aqui":       "❌ Ya tienes una oferta en esta venta",
       };
       showMsg(msgs[err.message] || "❌ Error al enviar la oferta", "error");
       if (!msgs[err.message]) console.error(err);
@@ -294,17 +320,17 @@ export default function MercadoPage() {
         if (new Date() > new Date(ventaData.fechaExpiracion)) throw new Error("venta-expirada");
 
         // Reemplazar los cromos de la oferta del usuario (identificada por ofertanteId)
-        const ofertasActualizadas = (ventaData.ofertas || []).map((o) => {
-          if (o.ofertanteId !== user.uid) return o;
-          return {
-            ...o,
-            cromos: cromosOferta.map((id) => {
-              const inf = getCromoInfo(id);
-              return { cromoId: id, nombre: inf.nombre, rareza: inf.rareza, imagen: inf.imagen };
-            }),
-            fechaEdicion: new Date().toISOString(),
-          };
-        });
+        const ofertaIdx = (ventaData.ofertas || []).findIndex((o) => o.ofertanteId === user.uid);
+        if (ofertaIdx === -1) throw new Error("oferta-no-encontrada");
+        const ofertasActualizadas = [...(ventaData.ofertas || [])];
+        ofertasActualizadas[ofertaIdx] = {
+          ...ofertasActualizadas[ofertaIdx],
+          cromos: cromosOferta.map((id) => {
+            const inf = getCromoInfo(id);
+            return { cromoId: id, nombre: inf.nombre, rareza: inf.rareza, imagen: inf.imagen };
+          }),
+          fechaEdicion: new Date().toISOString(),
+        };
 
         tx.update(ventaRef, { ofertas: ofertasActualizadas });
       });
@@ -317,8 +343,9 @@ export default function MercadoPage() {
       await loadData(user.uid);
     } catch (err) {
       const msgs = {
-        "venta-no-existe": "❌ Esta venta ya no existe",
-        "venta-expirada":  "❌ Esta venta ha caducado",
+        "venta-no-existe":       "❌ Esta venta ya no existe",
+        "venta-expirada":        "❌ Esta venta ha caducado",
+        "oferta-no-encontrada":  "❌ Tu oferta ya no existe en esta venta",
       };
       showMsg(msgs[err.message] || "❌ Error al actualizar la oferta", "error");
       if (!msgs[err.message]) console.error(err);
@@ -326,31 +353,50 @@ export default function MercadoPage() {
   };
 
   // ── Acción: Aceptar oferta ──────────────────────────────────────────────────
-  // Intercambio atómico: verifica stock de ambas partes, ejecuta y borra la venta.
+  // Intercambio atómico + cascada:
+  //   1. Swap de cartas entre vendedor y ofertante
+  //   2. Incrementa intercambiosOfertaHoy del ofertante
+  //   3. Elimina esta venta
+  //   4. Cancela las otras ofertas activas del ofertante en otras ventas
+  //   5. Si el ofertante también vendía una carta que acaba de entregar y ya no le sobra → borra esa venta
   const aceptarOferta = async (oferta) => {
     try {
       await runTransaction(db, async (tx) => {
-        const ventaRef    = doc(db, "ventas", ventaVerOfertas.id);
-        const vendedorRef = doc(db, "usuarios", user.uid);
+        const ventaRef     = doc(db, "ventas", ventaVerOfertas.id);
+        const vendedorRef  = doc(db, "usuarios", user.uid);
         const compradorRef = doc(db, "usuarios", oferta.ofertanteId);
 
-        // Reads
-        const ventaSnap     = await tx.get(ventaRef);
-        const vendedorSnap  = await tx.get(vendedorRef);
-        const compradorSnap = await tx.get(compradorRef);
+        // Reads principales + otras ventas activas para la cascada
+        const otrasVentasRefs = ventas
+          .filter((v) => v.id !== ventaVerOfertas.id)
+          .map((v) => doc(db, "ventas", v.id));
+        const [ventaSnap, vendedorSnap, compradorSnap, ...otrasVentasSnaps] =
+          await Promise.all([
+            tx.get(ventaRef),
+            tx.get(vendedorRef),
+            tx.get(compradorRef),
+            ...otrasVentasRefs.map((r) => tx.get(r)),
+          ]);
 
         if (!ventaSnap.exists()) throw new Error("venta-no-existe");
         if (!vendedorSnap.exists() || !compradorSnap.exists()) throw new Error("usuario-no-existe");
 
-        const ventaData    = ventaSnap.data();
-        const vendCromos   = vendedorSnap.data().cromos.map((c) => ({ ...c }));
-        const comprCromos  = compradorSnap.data().cromos.map((c) => ({ ...c }));
+        const ventaData   = ventaSnap.data();
+        const comprDatos  = compradorSnap.data();
 
-        // Verificar que el vendedor aún tiene la carta (necesita ≥2: 1 que se queda + 1 que da)
+        // Bloquear si el ofertante ya completó un intercambio hoy
+        const freshIntercambios = comprDatos.fechaUltimaIntercambioOferta === HOY
+          ? (comprDatos.intercambiosOfertaHoy || 0) : 0;
+        if (freshIntercambios >= 1) throw new Error("ofertante-ya-intercambio");
+
+        const vendCromos  = vendedorSnap.data().cromos.map((c) => ({ ...c }));
+        const comprCromos = comprDatos.cromos.map((c) => ({ ...c }));
+
+        // Verificar stock del vendedor (≥2: 1 se queda + 1 entrega)
         const vendTiene = vendCromos.find((c) => c.cromoId === ventaData.cromoId);
         if (!vendTiene || vendTiene.cantidad < 2) throw new Error("vendedor-sin-carta");
 
-        // Verificar que el comprador aún tiene las cartas ofertadas (≥2 de cada una)
+        // Verificar stock del ofertante para cada carta ofertada (≥2 de cada una)
         for (const c of oferta.cromos) {
           const comprTiene = comprCromos.find((x) => x.cromoId === c.cromoId);
           if (!comprTiene || comprTiene.cantidad < 2)
@@ -366,7 +412,7 @@ export default function MercadoPage() {
           else vendCromos.push({ cromoId: c.cromoId, cantidad: 1, fechaObtenido: HOY, pegado: false });
         });
 
-        // Comprador: entrega las ofertadas, recibe la del vendedor
+        // Ofertante: entrega las cartas ofertadas, recibe la del vendedor
         oferta.cromos.forEach((c) => {
           comprCromos.find((x) => x.cromoId === c.cromoId).cantidad -= 1;
         });
@@ -374,10 +420,41 @@ export default function MercadoPage() {
         if (comprGana) comprGana.cantidad += 1;
         else comprCromos.push({ cromoId: ventaData.cromoId, cantidad: 1, fechaObtenido: HOY, pegado: false });
 
-        // Writes
-        tx.update(vendedorRef,  { cromos: vendCromos });
-        tx.update(compradorRef, { cromos: comprCromos });
+        // ── Writes principales ───────────────────────────────────────────────
+        tx.update(vendedorRef, { cromos: vendCromos });
+        tx.update(compradorRef, {
+          cromos: comprCromos,
+          intercambiosOfertaHoy:       freshIntercambios + 1,
+          fechaUltimaIntercambioOferta: HOY,
+        });
         tx.delete(ventaRef);
+
+        // ── Cascada sobre otras ventas ───────────────────────────────────────
+        const cardsGiven = new Set(oferta.cromos.map((c) => c.cromoId));
+
+        for (let i = 0; i < otrasVentasSnaps.length; i++) {
+          const snap = otrasVentasSnaps[i];
+          if (!snap.exists()) continue;
+          const data = snap.data();
+          const ref  = otrasVentasRefs[i];
+
+          // Caso A: el ofertante es el vendedor de esta otra venta Y pone a la venta
+          // una carta que acaba de entregar y ya no le sobra → borrar la venta
+          if (data.vendedorId === oferta.ofertanteId && cardsGiven.has(data.cromoId)) {
+            const cantidadTrasSwap = comprCromos.find((c) => c.cromoId === data.cromoId)?.cantidad ?? 0;
+            if (cantidadTrasSwap < 2) {
+              tx.delete(ref);
+              continue; // ya borrada, no tocar sus ofertas
+            }
+          }
+
+          // Caso B: el ofertante tenía una oferta en esta otra venta → cancelarla
+          const tieneOferta = (data.ofertas || []).some((o) => o.ofertanteId === oferta.ofertanteId);
+          if (tieneOferta) {
+            const ofertasFiltradas = (data.ofertas || []).filter((o) => o.ofertanteId !== oferta.ofertanteId);
+            tx.update(ref, { ofertas: ofertasFiltradas });
+          }
+        }
       });
 
       addFeedEvent({
@@ -395,9 +472,10 @@ export default function MercadoPage() {
         showMsg(`❌ ${oferta.ofertanteNombre} ya no tiene "${nombre}" de sobra`, "error");
       } else {
         const msgs = {
-          "venta-no-existe":    "❌ Esta venta ya no existe",
-          "usuario-no-existe":  "❌ Usuario no encontrado",
-          "vendedor-sin-carta": "❌ Ya no tienes esa carta de sobra",
+          "venta-no-existe":          "❌ Esta venta ya no existe",
+          "usuario-no-existe":        "❌ Usuario no encontrado",
+          "vendedor-sin-carta":       "❌ Ya no tienes esa carta de sobra",
+          "ofertante-ya-intercambio": `❌ ${oferta.ofertanteNombre} ya completó un intercambio hoy`,
         };
         showMsg(msgs[err.message] || "❌ Error al aceptar la oferta", "error");
         if (!msgs[err.message]) console.error(err);
@@ -471,10 +549,12 @@ export default function MercadoPage() {
             </span>
             <span style={{
               fontSize: "0.68rem", fontWeight: "bold", padding: "3px 9px", borderRadius: "6px",
-              background: yaOfertHoy ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
-              color:      yaOfertHoy ? "#ef4444"              : "#f59e0b",
+              background: !puedeHacerOferta ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
+              color:      !puedeHacerOferta ? "#ef4444"               : "#f59e0b",
             }}>
-              💰 {yaOfertHoy ? "Oferta usada" : "1 oferta libre"}
+              💰 {!puedeHacerOferta
+                ? (intercambiosOfertaHoyCount >= 1 ? "Intercambio hecho" : "Ofertas agotadas")
+                : `${ofertasRestantes} oferta${ofertasRestantes !== 1 ? "s" : ""} libre${ofertasRestantes !== 1 ? "s" : ""}`}
             </span>
           </div>
         </div>
@@ -614,21 +694,28 @@ export default function MercadoPage() {
                     ) : (
                       <button
                         onClick={() => {
-                          if (yaOfertHoy) { showMsg("❌ Ya has hecho una oferta hoy", "error"); return; }
+                          if (!puedeHacerOferta) {
+                            showMsg(intercambiosOfertaHoyCount >= 1
+                              ? "❌ Ya completaste un intercambio hoy"
+                              : "❌ Ya has agotado tus 3 ofertas de hoy", "error");
+                            return;
+                          }
                           setVentaSeleccionada(venta); setCromosOferta([]);
                         }}
                         style={{
                           width: "100%", padding: "10px", borderRadius: "10px", border: "none",
-                          background: yaOfertHoy
+                          background: !puedeHacerOferta
                             ? "#334155"
                             : "linear-gradient(135deg, #f59e0b, #d97706)",
-                          color:  yaOfertHoy ? "#64748b" : "#000",
+                          color:  !puedeHacerOferta ? "#64748b" : "#000",
                           fontWeight: "bold",
-                          cursor: yaOfertHoy ? "not-allowed" : "pointer",
+                          cursor: !puedeHacerOferta ? "not-allowed" : "pointer",
                           fontSize: "0.85rem",
                         }}
                       >
-                        {yaOfertHoy ? "🔒 Oferta usada hoy" : "💰 Hacer oferta"}
+                        {!puedeHacerOferta
+                          ? (intercambiosOfertaHoyCount >= 1 ? "🔒 Intercambio hecho" : "🔒 Ofertas agotadas")
+                          : `💰 Hacer oferta${ofertasRestantes < 3 ? ` (${ofertasRestantes} libre${ofertasRestantes !== 1 ? "s" : ""})` : ""}`}
                       </button>
                     )}
                   </div>
@@ -899,13 +986,26 @@ export default function MercadoPage() {
 
           return (
             <div>
-              {/* Oferta enviada */}
-              <h2 style={{ fontSize: "1.1rem", marginBottom: "15px" }}>💰 Mi oferta activa</h2>
+              {/* Ofertas enviadas */}
+              <h2 style={{ fontSize: "1.1rem", marginBottom: "15px" }}>
+                💰 Mis ofertas activas{misOfertas.length > 0 && ` (${misOfertas.length})`}
+                <span style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: "normal", marginLeft: "8px" }}>
+                  {propuestasHoyCount}/3 usadas
+                </span>
+              </h2>
               {misOfertas.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "20px 0", color: "#64748b", marginBottom: "20px" }}>
                   <p style={{ fontSize: "1.8rem", marginBottom: "8px" }}>💰</p>
-                  <p>{yaOfertHoy ? "Tu oferta ya fue aceptada o la carta caducó" : "No has hecho ninguna oferta hoy"}</p>
-                  {!yaOfertHoy && <p style={{ fontSize: "0.8rem", marginTop: "4px" }}>Ve al Mercado para ofertar</p>}
+                  <p>
+                    {intercambiosOfertaHoyCount >= 1
+                      ? "Ya completaste tu intercambio de hoy"
+                      : propuestasHoyCount > 0
+                        ? "Tus ofertas están pendientes o caducaron"
+                        : "No has hecho ninguna oferta hoy"}
+                  </p>
+                  {!puedeHacerOferta
+                    ? null
+                    : <p style={{ fontSize: "0.8rem", marginTop: "4px" }}>Ve al Mercado para ofertar</p>}
                 </div>
               ) : (
                 misOfertas.map(({ venta, oferta }) => (
