@@ -887,9 +887,10 @@ export default function AlbumPage() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "16px" }}>
               {[
-                { icon: "🏆", label: "Ranking", path: "/ranking" },
-                { icon: "📢", label: "Feed", path: "/feed" },
-                { icon: "😈", label: "Tortura", path: "/tortura" },
+                { icon: "🏆", label: "Ranking",  path: "/ranking" },
+                { icon: "📢", label: "Feed",     path: "/feed" },
+                { icon: "😈", label: "Tortura",  path: "/tortura" },
+                { icon: "📘", label: "Reglas",   path: "/reglas" },
               ].map((item) => (
                 <button key={item.path} onClick={() => { setShowOtros(false); router.push(item.path); }} style={{
                   display: "flex", flexDirection: "column", alignItems: "center",
