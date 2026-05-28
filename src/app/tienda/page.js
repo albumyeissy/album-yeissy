@@ -62,10 +62,17 @@ export default function TiendaPage() {
   };
 
   // ── Countdown (sólo visible cuando bloqueada) ────────────────────────────────
+  // Cuando el contador llega a 0 recargamos la página para re-evaluar disponibilidad
   useEffect(() => {
+    if (!bloqueada) return;
     const update = () => {
       const diff = TIENDA_RELEASE - new Date();
-      if (diff <= 0) { setCountdown("00:00:00"); return; }
+      if (diff <= 0) {
+        setCountdown("00:00:00");
+        // La fecha de lanzamiento ya pasó → recargamos para que la tienda abra
+        window.location.reload();
+        return;
+      }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
@@ -76,7 +83,7 @@ export default function TiendaPage() {
     update();
     const iv = setInterval(update, 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [bloqueada]);
 
   // ── Carga inicial ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -88,7 +95,9 @@ export default function TiendaPage() {
           getDoc(doc(db, "usuarios", u.uid)),
           getFeatures(),
         ]);
-        if (!isTiendaAvailable(feats)) {
+        // La tienda se desbloquea si Firestore lo dice O si ya pasó la fecha de lanzamiento
+        const disponible = isTiendaAvailable(feats) || new Date() >= TIENDA_RELEASE;
+        if (!disponible) {
           setBloqueada(true);
           setLoading(false);
           return;

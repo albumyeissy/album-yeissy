@@ -232,6 +232,78 @@ const SECCIONES = [
   },
 
   {
+    id: "tortura",
+    emoji: "😈",
+    titulo: "La Tortura Diaria",
+    subtitulo: "Sorteo compartido + minijuego para ganar un sobre",
+    color: "#ef4444",
+    contenido: () => (
+      <div>
+        <p style={{ color: "#94a3b8", fontSize: "0.85rem", marginBottom: "14px", lineHeight: 1.5 }}>
+          Cada día, el primer jugador que entre en la sección de Tortura debe <strong style={{ color: "white" }}>girar la ruleta</strong> para sortear qué tortura le toca a <strong style={{ color: "white" }}>todo el grupo</strong>.
+        </p>
+
+        <div style={{
+          background: "linear-gradient(135deg, rgba(239,68,68,0.10), rgba(239,68,68,0.04))",
+          border: "1px solid rgba(239,68,68,0.3)", borderRadius: "12px",
+          padding: "14px", marginBottom: "16px",
+        }}>
+          <p style={{ margin: "0 0 8px", fontWeight: "bold", color: "#ef4444", fontSize: "0.88rem" }}>
+            🎰 ¿Cómo funciona el sorteo?
+          </p>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#fca5a5", lineHeight: 1.6 }}>
+            Al entrar, si nadie ha girado aún, verás la pantalla de sorteo. Al pulsar <em>"Girar la ruleta"</em>, una animación elige aleatoriamente una de las 6 torturas — probabilidad igual para todas. El resultado se guarda y <strong>todos los jugadores</strong> verán y jugarán esa misma tortura hasta la siguiente medianoche.
+          </p>
+        </div>
+
+        <p style={{ color: "#94a3b8", fontSize: "0.85rem", margin: "0 0 10px", fontWeight: "bold" }}>
+          Las 6 torturas disponibles
+        </p>
+
+        {[
+          { emoji: "🔢", nombre: "El Contador",  desc: "500 taps sin parar. Si tardas más de 3 s en un tap, vuelves a 0.",                                  oferta: 200 },
+          { emoji: "🌀", nombre: "La Espera",    desc: "Mantén el botón pulsado 3 minutos seguidos. Si lo sueltas, vuelves a 0.",                           oferta: 60  },
+          { emoji: "📝", nombre: "El Texto",     desc: "Copia un texto exacto sin errores. Tienes 3 intentos y no puedes pegar.",                           oferta: null },
+          { emoji: "⚡", nombre: "El Reflejo",   desc: "Un botón aparece al azar durante 1 segundo. Tócalo 25 veces. 3 fallos = game over.",                 oferta: 12  },
+          { emoji: "🧮", nombre: "El Cálculo",   desc: "20 operaciones aritméticas con 4 segundos cada una. Sin teclado. 3 errores = game over.",            oferta: 10  },
+          { emoji: "🎯", nombre: "La Puntería",  desc: "Un círculo rebota y se acelera con cada acierto. Tócalo 20 veces. 3 fallos = game over.",            oferta: 10  },
+        ].map((t) => (
+          <div key={t.nombre} style={{
+            background: "rgba(255,255,255,0.03)", border: "1px solid #1e293b",
+            borderRadius: "10px", padding: "10px 12px", marginBottom: "7px",
+            display: "flex", gap: "10px", alignItems: "flex-start",
+          }}>
+            <span style={{ fontSize: "1.4rem", flexShrink: 0 }}>{t.emoji}</span>
+            <div>
+              <p style={{ margin: 0, fontWeight: "bold", color: "white", fontSize: "0.85rem" }}>{t.nombre}</p>
+              <p style={{ margin: "2px 0 0", color: "#64748b", fontSize: "0.78rem", lineHeight: 1.4 }}>{t.desc}</p>
+              {t.oferta !== null && (
+                <p style={{ margin: "3px 0 0", color: "#f59e0b", fontSize: "0.72rem" }}>
+                  💡 A mitad ({t.oferta}) te ofrecen rendirte por 2 cromos
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+
+        <div style={{
+          background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.25)",
+          borderRadius: "10px", padding: "12px", marginTop: "10px",
+        }}>
+          <p style={{ margin: "0 0 4px", fontWeight: "bold", color: "#10b981", fontSize: "0.88rem" }}>
+            🏆 Premio / Rendición
+          </p>
+          <p style={{ margin: 0, fontSize: "0.8rem", color: "#6ee7b7", lineHeight: 1.5 }}>
+            Completar la tortura → <strong>1 sobre bonus</strong>.
+            Rendirte → <strong>2 cromos de consolación</strong>.
+            Solo se puede hacer una vez al día.
+          </p>
+        </div>
+      </div>
+    ),
+  },
+
+  {
     id: "ruleta",
     emoji: "🎰",
     titulo: "La Ruleta Rusa",
@@ -420,7 +492,8 @@ const SECCIONES = [
         </p>
         {[
           { emoji: "📦", accion: "Sobres gratuitos",              limite: "2 / día",    color: "#10b981" },
-          { emoji: "🎰", accion: "Girar la ruleta",               limite: "1 / día",    color: "#ef4444" },
+          { emoji: "😈", accion: "Tortura diaria",                limite: "1 / día",    color: "#ef4444" },
+          { emoji: "🎰", accion: "Girar la ruleta",               limite: "1 / día",    color: "#dc2626" },
           { emoji: "🏷️", accion: "Poner carta en venta",          limite: "1 / día",    color: "#f59e0b" },
           { emoji: "💰", accion: "Hacer ofertas",                  limite: "3 / día",    color: "#3b82f6" },
           { emoji: "🤝", accion: "Intercambio como vendedor",      limite: "1 / día",    color: "#f59e0b" },
