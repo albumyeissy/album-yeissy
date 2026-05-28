@@ -13,7 +13,7 @@ const TORTURAS = [
   { id: "espera",   nombre: "La Espera",   emoji: "🌀", descripcion: "Mantén pulsado 3 minutos",                            color: "#3b82f6" },
   { id: "texto",    nombre: "El Texto",    emoji: "📝", descripcion: "Escribe el texto sin errores",                        color: "#8b5cf6" },
   { id: "reflejo",  nombre: "El Reflejo",  emoji: "⚡", descripcion: "Toca el botón antes de que desaparezca · 25 veces",  color: "#f59e0b" },
-  { id: "calculo",  nombre: "El Cálculo",  emoji: "🧮", descripcion: "Resuelve 20 operaciones en 4 segundos cada una",     color: "#10b981" },
+  { id: "calculo",  nombre: "El Cálculo",  emoji: "🧮", descripcion: "Resuelve 20 operaciones en 10 segundos cada una",    color: "#10b981" },
   { id: "punteria", nombre: "La Puntería", emoji: "🎯", descripcion: "Toca el círculo en movimiento · 20 veces",           color: "#ec4899" },
 ];
 
@@ -106,7 +106,7 @@ export default function TorturaPage() {
   const [calculoErrores, setCalculoErrores] = useState(0);
   const [calculoRespuesta, setCalculoRespuesta] = useState("");
   const [calculoQuestion, setCalculoQuestion] = useState(null);
-  const [calculoTimer, setCalculoTimer] = useState(4);
+  const [calculoTimer, setCalculoTimer] = useState(10);
   const [calculoOferta, setCalculoOferta] = useState(false);
   const [calculoFlashError, setCalculoFlashError] = useState(false);
   const calculoErroresRef = useRef(0);
@@ -210,7 +210,7 @@ export default function TorturaPage() {
   useEffect(() => {
     if (fase !== "jugando" || torturaHoy?.id !== "calculo" || calculoOferta) return;
     if (calculoTimerIntervalRef.current) clearInterval(calculoTimerIntervalRef.current);
-    setCalculoTimer(4);
+    setCalculoTimer(10);
     const iv = setInterval(() => {
       setCalculoTimer((t) => {
         if (t <= 1) {
@@ -949,7 +949,7 @@ export default function TorturaPage() {
       {fase === "jugando" && torturaHoy?.id === "calculo" && (
         <div style={{ textAlign: "center", maxWidth: "360px", margin: "0 auto" }}>
           <h2 style={{ fontSize: "1.3rem", marginBottom: "4px" }}>🧮 ¿Cuánto es?</h2>
-          <p style={{ color: "#64748b", fontSize: "0.75rem", marginBottom: "12px" }}>4 segundos · 3 errores = game over</p>
+          <p style={{ color: "#64748b", fontSize: "0.75rem", marginBottom: "12px" }}>10 segundos · 3 errores = game over</p>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
             <p style={{ color: "#64748b", fontSize: "0.8rem", margin: 0 }}>Pregunta <span style={{ color: "white", fontWeight: "bold" }}>{calculoPregunta + 1}</span>/20</p>
             <p style={{ fontSize: "1.1rem", margin: 0, letterSpacing: "3px" }}>{"❤️".repeat(3 - calculoErrores)}{"🖤".repeat(calculoErrores)}</p>
@@ -970,8 +970,8 @@ export default function TorturaPage() {
           {!calculoOferta && calculoQuestion && (
             <>
               <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginBottom: "18px" }}>
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} style={{ width: 14, height: 14, borderRadius: "50%", background: i <= calculoTimer ? (calculoTimer <= 1 ? "#ef4444" : calculoTimer <= 2 ? "#f59e0b" : "#10b981") : "#1e293b", border: "2px solid #334155", transition: "background 0.3s" }} />
+                {[2, 4, 6, 8, 10].map((threshold) => (
+                  <div key={threshold} style={{ width: 14, height: 14, borderRadius: "50%", background: threshold <= calculoTimer ? (calculoTimer <= 2 ? "#ef4444" : calculoTimer <= 5 ? "#f59e0b" : "#10b981") : "#1e293b", border: "2px solid #334155", transition: "background 0.3s" }} />
                 ))}
               </div>
               <div style={{ background: calculoFlashError ? "linear-gradient(145deg, #3f1f1f, #1e293b)" : "linear-gradient(145deg, #1e293b, #0f172a)", borderRadius: "20px", padding: "28px 20px", border: calculoFlashError ? "2px solid #ef4444" : "1px solid #334155", marginBottom: "20px", transition: "all 0.2s", animation: calculoFlashError ? "shake 0.4s" : "none" }}>
