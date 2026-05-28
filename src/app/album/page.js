@@ -269,6 +269,20 @@ export default function AlbumPage() {
           0%, 100% { box-shadow: 0 -4px 16px rgba(245,158,11,0.4), 0 4px 12px rgba(0,0,0,0.5); }
           50% { box-shadow: 0 -4px 32px rgba(245,158,11,0.9), 0 0 24px rgba(245,158,11,0.5), 0 4px 12px rgba(0,0,0,0.5); }
         }
+        @keyframes holoRainbow {
+          0%   { filter: hue-rotate(0deg) saturate(1.3); }
+          100% { filter: hue-rotate(360deg) saturate(1.3); }
+        }
+        @keyframes holoSweep {
+          0%   { transform: translateX(-250%) skewX(-20deg); opacity: 0; }
+          15%  { opacity: 1; }
+          85%  { opacity: 1; }
+          100% { transform: translateX(600%) skewX(-20deg); opacity: 0; }
+        }
+        @keyframes holoShieldPulse {
+          0%, 100% { box-shadow: 0 0 0 1px rgba(16,185,129,0.3); }
+          50%       { box-shadow: 0 0 12px 2px rgba(16,185,129,0.25); }
+        }
         .preview-inner {
           width: 100%; height: 100%; position: relative;
           transform-style: preserve-3d;
@@ -353,33 +367,54 @@ export default function AlbumPage() {
                 padding: "20px 15px 90px 15px",
               }}
             >
-              {/* Título de página */}
+              {/* Título de página — holográfico si completa, blindado si armada */}
               <div style={{
-                textAlign: "center", marginBottom: "20px",
-                ...(armaPage && !completaPage ? {
-                  background: "rgba(16,185,129,0.06)",
-                  borderRadius: "14px", padding: "12px 8px",
-                  border: "1px solid rgba(16,185,129,0.25)",
-                } : {}),
-                ...(completaPage ? {
-                  background: "rgba(251,191,36,0.06)",
-                  borderRadius: "14px", padding: "12px 8px",
-                  border: "1px solid rgba(251,191,36,0.3)",
-                } : {}),
+                marginBottom: "20px", borderRadius: "16px",
+                padding: completaPage ? "2px" : "0",
+                background: completaPage
+                  ? "linear-gradient(135deg, #ffd700, #ff69b4, #a78bfa, #60a5fa, #34d399, #ffd700)"
+                  : "transparent",
+                animation: completaPage ? "holoRainbow 3s linear infinite" : "none",
               }}>
-                <span style={{ fontSize: "2.5rem" }}>{pagina.emoji}</span>
-                <h2 style={{
-                  fontSize: "1.4rem", margin: "8px 0 4px",
-                  letterSpacing: "1px"
+                <div style={{
+                  textAlign: "center",
+                  borderRadius: "14px",
+                  padding: "12px 8px",
+                  position: "relative",
+                  overflow: "hidden",
+                  background: completaPage ? "#0f172a" : "transparent",
+                  ...(armaPage && !completaPage ? {
+                    background: "rgba(16,185,129,0.05)",
+                    animation: "holoShieldPulse 2.5s ease-in-out infinite",
+                  } : {}),
                 }}>
-                  {pagina.nombre}
-                  {completaPage && " ✅"}
-                  {armaPage && !completaPage && <span style={{ fontSize: "1rem", marginLeft: "6px" }}>🛡️</span>}
-                </h2>
-                <p style={{ color: "#64748b", fontSize: "0.85rem" }}>
-                  {pegadosPage}/{cromosPage.length} cromos pegados
-                  {armaPage && <span style={{ color: "#10b981", marginLeft: "6px", fontSize: "0.75rem" }}>· Blindada</span>}
-                </p>
+                  {/* Barrido de luz holográfica */}
+                  {completaPage && (
+                    <div style={{
+                      position: "absolute", top: 0, bottom: 0, left: 0,
+                      width: "35%",
+                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)",
+                      animation: "holoSweep 2.8s ease-in-out infinite",
+                      animationDelay: "0.8s",
+                      pointerEvents: "none", zIndex: 1,
+                    }} />
+                  )}
+                  <span style={{ fontSize: "2.5rem", position: "relative", zIndex: 2 }}>{pagina.emoji}</span>
+                  <h2 style={{
+                    fontSize: "1.4rem", margin: "8px 0 4px",
+                    letterSpacing: "1px", position: "relative", zIndex: 2,
+                  }}>
+                    {pagina.nombre}
+                    {completaPage && <span style={{ marginLeft: "6px" }}>✨</span>}
+                    {armaPage && !completaPage && <span style={{ fontSize: "1rem", marginLeft: "6px" }}>🛡️</span>}
+                  </h2>
+                  <p style={{ fontSize: "0.85rem", position: "relative", zIndex: 2,
+                    color: completaPage ? "#fbbf24" : armaPage ? "#10b981" : "#64748b" }}>
+                    {pegadosPage}/{cromosPage.length} cromos pegados
+                    {completaPage && <span style={{ marginLeft: "6px", fontSize: "0.75rem" }}>· Completa</span>}
+                    {armaPage && !completaPage && <span style={{ marginLeft: "6px", fontSize: "0.75rem" }}>· Blindada 🛡️</span>}
+                  </p>
+                </div>
               </div>
 
               {/* Navegación inline */}
