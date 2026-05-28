@@ -449,6 +449,7 @@ const SECCIONES = [
         </p>
         {[
           { emoji: "📦", nombre: "Sobre extra",          precio: 20, desc: "Un sobre adicional para usar cuando quieras.",                                                     color: "#10b981" },
+          { emoji: "🎁", nombre: "Mega Sobre",           precio: 30, desc: "Abre un Mega Sobre especial con 7 cartas en lugar de 5.",                                          color: "#fbbf24" },
           { emoji: "🛡️", nombre: "Protección de racha",  precio: 15, desc: "Mañana no perderás la racha aunque no abras sobres. También cancela maldiciones.",               color: "#3b82f6" },
           { emoji: "🎯", nombre: "Robo común/rara",      precio: 30, desc: "Ves las cartas comunes y raras de un jugador y robas una.",                                       color: "#f97316" },
           { emoji: "⭐", nombre: "Robo legendaria",      precio: 35, desc: "Igual pero solo con legendarias.",                                                                 color: "#fbbf24" },
@@ -472,7 +473,12 @@ const SECCIONES = [
           </div>
         ))}
 
-        <p style={{ margin: "14px 0 0", fontSize: "0.78rem", color: "#475569", textAlign: "center" }}>
+        <div style={{ marginTop: "12px", background: "rgba(16,185,129,0.07)", border: "1px solid rgba(16,185,129,0.25)", borderRadius: "10px", padding: "10px 12px" }}>
+          <p style={{ margin: 0, fontSize: "0.78rem", color: "#10b981", lineHeight: 1.5 }}>
+            🛡️ <strong>Blindaje por página:</strong> Si tienes todos los cromos de una página, sus cartas <strong>no pueden ser robadas</strong>. La página aparecerá blindada en tu álbum.
+          </p>
+        </div>
+        <p style={{ margin: "10px 0 0", fontSize: "0.78rem", color: "#475569", textAlign: "center" }}>
           Los jugadores empiezan con <strong style={{ color: "#fbbf24" }}>50 monedas</strong> al registrarse.
         </p>
       </div>

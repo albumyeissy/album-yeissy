@@ -341,6 +341,8 @@ export default function AlbumPage() {
           const cromosPage = CROMOS.filter((c) => c.pagina === pagina.id);
           const pegadosPage = cromosPage.filter((c) => estaPegado(c.id)).length;
           const completaPage = pegadosPage === cromosPage.length && cromosPage.length > 0;
+          const tenidasPage = new Set(misCromos.filter((c) => c.cantidad > 0).map((c) => c.cromoId));
+          const armaPage = cromosPage.length > 0 && cromosPage.every((c) => tenidasPage.has(c.id));
 
           return (
             <div
@@ -354,6 +356,16 @@ export default function AlbumPage() {
               {/* Título de página */}
               <div style={{
                 textAlign: "center", marginBottom: "20px",
+                ...(armaPage && !completaPage ? {
+                  background: "rgba(16,185,129,0.06)",
+                  borderRadius: "14px", padding: "12px 8px",
+                  border: "1px solid rgba(16,185,129,0.25)",
+                } : {}),
+                ...(completaPage ? {
+                  background: "rgba(251,191,36,0.06)",
+                  borderRadius: "14px", padding: "12px 8px",
+                  border: "1px solid rgba(251,191,36,0.3)",
+                } : {}),
               }}>
                 <span style={{ fontSize: "2.5rem" }}>{pagina.emoji}</span>
                 <h2 style={{
@@ -362,9 +374,11 @@ export default function AlbumPage() {
                 }}>
                   {pagina.nombre}
                   {completaPage && " ✅"}
+                  {armaPage && !completaPage && <span style={{ fontSize: "1rem", marginLeft: "6px" }}>🛡️</span>}
                 </h2>
                 <p style={{ color: "#64748b", fontSize: "0.85rem" }}>
                   {pegadosPage}/{cromosPage.length} cromos pegados
+                  {armaPage && <span style={{ color: "#10b981", marginLeft: "6px", fontSize: "0.75rem" }}>· Blindada</span>}
                 </p>
               </div>
 
@@ -909,18 +923,13 @@ export default function AlbumPage() {
                 style={{
                   display: "flex", flexDirection: "column", alignItems: "center",
                   gap: "6px", padding: "14px 8px", borderRadius: "14px",
-                  border: tiendaDisponible ? "1px solid #f59e0b" : "1px solid #334155",
-                  background: tiendaDisponible ? "rgba(245,158,11,0.08)" : "#0f172a",
+                  border: "1px solid #f59e0b",
+                  background: "rgba(245,158,11,0.08)",
                   color: "white", cursor: "pointer", position: "relative",
                 }}
               >
-                <span style={{ fontSize: "2rem" }}>{tiendaDisponible ? "🏪" : "🔒"}</span>
-                <span style={{ fontSize: "0.75rem", color: tiendaDisponible ? "#fbbf24" : "#64748b" }}>
-                  Tienda
-                </span>
-                {!tiendaDisponible && (
-                  <span style={{ fontSize: "0.58rem", color: "#475569" }}>28 may</span>
-                )}
+                <span style={{ fontSize: "2rem" }}>🛒</span>
+                <span style={{ fontSize: "0.75rem", color: "#fbbf24" }}>Tienda</span>
               </button>
 
               {/* Ruleta Rusa */}

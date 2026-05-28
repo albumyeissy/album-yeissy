@@ -323,6 +323,8 @@ export default function TorturaPage() {
 
   const darPremio = async (tipo) => {
     let freshSobresBonus = datosUsuario?.sobresBonus || 0;
+    let freshMonedas = datosUsuario?.monedas ?? 50;
+    const monedasPremio = tipo === "sobre" ? 10 : 5;
     try {
       await runTransaction(db, async (transaction) => {
         const userRef = doc(db, "usuarios", user.uid);
@@ -331,6 +333,7 @@ export default function TorturaPage() {
         const d = snap.data();
         if (d.fechaTortura === HOY) throw new Error("ya-hecha");
         freshSobresBonus = d.sobresBonus || 0;
+        freshMonedas = d.monedas ?? 50;
         transaction.set(userRef, { fechaTortura: HOY }, { merge: true });
       });
     } catch (err) {
@@ -340,17 +343,19 @@ export default function TorturaPage() {
 
     if (tipo === "sobre") {
       const nuevoBonus = freshSobresBonus + 1;
+      const nuevasMonedas = freshMonedas + monedasPremio;
       try {
-        await setDoc(doc(db, "usuarios", user.uid), { sobresBonus: nuevoBonus }, { merge: true });
+        await setDoc(doc(db, "usuarios", user.uid), { sobresBonus: nuevoBonus, monedas: nuevasMonedas }, { merge: true });
         addFeedEvent({
           type: "racha",
           userName: datosUsuario?.nombre || datosUsuario?.email,
-          details: `😈 Ha sobrevivido a "${torturaHoy?.nombre}" y ganado un sobre de tortura`,
+          details: `😈 Ha sobrevivido a "${torturaHoy?.nombre}" y ganado un sobre + 10🪙`,
         });
       } catch (err) { console.error(err); }
-      setDatosUsuario({ ...datosUsuario, sobresBonus: nuevoBonus });
+      setDatosUsuario({ ...datosUsuario, sobresBonus: nuevoBonus, monedas: nuevasMonedas });
       setPremio("sobre"); setYaHechaHoy(true); setFase("premio");
     } else {
+      const nuevasMonedas = freshMonedas + monedasPremio;
       const cromos = seleccionarCromosAleatorios(2);
       setPremio("cromos"); setCromosGanados(cromos);
       const cromosActuales = datosUsuario?.cromos || [];
@@ -361,14 +366,14 @@ export default function TorturaPage() {
         else cromosActualizados.push({ cromoId: cromo.id, cantidad: 1, fechaObtenido: HOY, pegado: false });
       });
       try {
-        await setDoc(doc(db, "usuarios", user.uid), { cromos: cromosActualizados }, { merge: true });
+        await setDoc(doc(db, "usuarios", user.uid), { cromos: cromosActualizados, monedas: nuevasMonedas }, { merge: true });
         addFeedEvent({
           type: "racha",
           userName: datosUsuario?.nombre || datosUsuario?.email,
-          details: `😮‍💨 Se ha rendido en "${torturaHoy?.nombre}" y recibido 2 cromos de consolación`,
+          details: `😮‍💨 Se ha rendido en "${torturaHoy?.nombre}" y recibido 2 cromos + 5🪙`,
         });
       } catch (err) { console.error(err); }
-      setDatosUsuario({ ...datosUsuario, cromos: cromosActualizados });
+      setDatosUsuario({ ...datosUsuario, cromos: cromosActualizados, monedas: nuevasMonedas });
       setYaHechaHoy(true); setFase("premio");
     }
   };
@@ -819,7 +824,7 @@ export default function TorturaPage() {
             <div style={{ background: "#1e293b", borderRadius: "16px", padding: "20px", maxWidth: "350px", margin: "0 auto", border: "1px solid #f59e0b", animation: "fadeInUp 0.3s" }}>
               <p style={{ fontWeight: "bold", fontSize: "1.1rem", marginBottom: "15px" }}>¿Rendirte ya?</p>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={videoRendirse} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 Rendirme (2 cromos)</button>
+                <button onClick={videoRendirse} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 Rendirme (2 cromos +5🪙)</button>
                 <button onClick={videoContinuar} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#10b981", color: "white", fontWeight: "bold", cursor: "pointer" }}>💪 Aguantar ({formatTime(videoDuration - videoTime)})</button>
               </div>
             </div>
@@ -841,7 +846,7 @@ export default function TorturaPage() {
             <div style={{ background: "#1e293b", borderRadius: "16px", padding: "20px", maxWidth: "350px", margin: "0 auto 20px", border: "1px solid #f59e0b", animation: "fadeInUp 0.3s" }}>
               <p style={{ fontWeight: "bold", marginBottom: "15px" }}>200 taps. ¿Rendirte?</p>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos</button>
+                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos +5🪙</button>
                 <button onClick={() => setContadorOferta(false)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#10b981", color: "white", fontWeight: "bold", cursor: "pointer" }}>💪 Seguir (faltan {500 - contadorTaps})</button>
               </div>
             </div>
@@ -868,7 +873,7 @@ export default function TorturaPage() {
             <div style={{ background: "#1e293b", borderRadius: "16px", padding: "20px", maxWidth: "350px", margin: "0 auto 20px", border: "1px solid #f59e0b", animation: "fadeInUp 0.3s" }}>
               <p style={{ fontWeight: "bold", marginBottom: "15px" }}>1 minuto aguantando. ¿Rendirte?</p>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos</button>
+                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos +5🪙</button>
                 <button onClick={() => setEsperaOferta(false)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#10b981", color: "white", fontWeight: "bold", cursor: "pointer" }}>💪 Seguir</button>
               </div>
             </div>
@@ -901,7 +906,7 @@ export default function TorturaPage() {
             </div>
           )}
           <div style={{ display: "flex", gap: "10px", marginTop: "15px" }}>
-            <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "14px", borderRadius: "12px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 Rendirme (2 cromos)</button>
+            <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "14px", borderRadius: "12px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 Rendirme (2 cromos +5🪙)</button>
             <button onClick={handleTextoSubmit} style={{ flex: 1, padding: "14px", borderRadius: "12px", border: "none", background: "#10b981", color: "white", fontWeight: "bold", cursor: "pointer" }}>✅ Comprobar</button>
           </div>
         </div>
@@ -927,7 +932,7 @@ export default function TorturaPage() {
               <p style={{ fontWeight: "bold", marginBottom: "6px" }}>12 reflejos. ¿Rendirte?</p>
               <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "15px" }}>Faltan {25 - reflejoHits} para el sobre completo</p>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos</button>
+                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos +5🪙</button>
                 <button onClick={() => { setReflejoOferta(false); setTimeout(() => mostrarObjetivoReflejoRef.current?.(), 400); }} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#10b981", color: "white", fontWeight: "bold", cursor: "pointer" }}>💪 Seguir</button>
               </div>
             </div>
@@ -962,7 +967,7 @@ export default function TorturaPage() {
               <p style={{ fontWeight: "bold", marginBottom: "6px" }}>10 preguntas resueltas. ¿Rendirte?</p>
               <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "15px" }}>Quedan 10 para el sobre completo</p>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos</button>
+                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos +5🪙</button>
                 <button onClick={() => setCalculoOferta(false)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#10b981", color: "white", fontWeight: "bold", cursor: "pointer" }}>💪 Seguir</button>
               </div>
             </div>
@@ -1012,7 +1017,7 @@ export default function TorturaPage() {
               <p style={{ fontWeight: "bold", marginBottom: "6px" }}>10 aciertos. ¿Rendirte?</p>
               <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "15px" }}>Faltan {20 - punteriaHits} para el sobre completo</p>
               <div style={{ display: "flex", gap: "10px" }}>
-                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos</button>
+                <button onClick={() => rendirse(true)} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: "#f59e0b", color: "#000", fontWeight: "bold", cursor: "pointer" }}>😮‍💨 2 cromos +5🪙</button>
                 <button onClick={() => {
                   setPunteriaOferta(false);
                   if (punteriaIntervalRef.current) clearInterval(punteriaIntervalRef.current);
@@ -1045,7 +1050,10 @@ export default function TorturaPage() {
               <div style={{ fontSize: "5rem", marginBottom: "16px", animation: "pulsoSuave 1.5s ease-in-out infinite" }}>📦</div>
               <h2 style={{ fontSize: "1.6rem", marginBottom: "8px", color: "#f59e0b" }}>¡LO HAS CONSEGUIDO!</h2>
               <p style={{ color: "#94a3b8", marginBottom: "6px" }}>Has ganado un sobre completo de tortura</p>
-              <p style={{ color: "#64748b", fontSize: "0.8rem", marginBottom: "32px" }}>Ábrelo cuando quieras desde la pantalla de sobres</p>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "6px 16px", marginBottom: "24px" }}>
+                <span style={{ fontSize: "1.2rem" }}>🪙</span>
+                <span style={{ color: "#fbbf24", fontWeight: "bold", fontSize: "1.1rem" }}>+10 monedas</span>
+              </div>
               <button onClick={() => router.push("/abrir-sobre")} style={{ padding: "16px", borderRadius: "14px", border: "none", background: "linear-gradient(135deg, #f59e0b, #d97706)", color: "#000", fontWeight: "bold", cursor: "pointer", fontSize: "1.1rem", boxShadow: "0 4px 20px rgba(245,158,11,0.4)", width: "100%", marginBottom: "10px" }}>📦 Abrir sobre ahora</button>
               <button onClick={() => router.push("/album")} style={{ padding: "12px", borderRadius: "14px", border: "1px solid #334155", background: "transparent", color: "#64748b", cursor: "pointer", fontSize: "0.9rem", width: "100%" }}>Volver al álbum</button>
             </>
@@ -1053,7 +1061,11 @@ export default function TorturaPage() {
             <>
               <p style={{ fontSize: "3rem", marginBottom: "10px" }}>😮‍💨</p>
               <h2 style={{ fontSize: "1.5rem", marginBottom: "8px" }}>Te has rendido...</h2>
-              <p style={{ color: "#94a3b8", marginBottom: "25px" }}>Has ganado 2 cromos de consolación</p>
+              <p style={{ color: "#94a3b8", marginBottom: "8px" }}>Has ganado 2 cromos de consolación</p>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: "10px", padding: "6px 16px", marginBottom: "18px" }}>
+                <span style={{ fontSize: "1.2rem" }}>🪙</span>
+                <span style={{ color: "#fbbf24", fontWeight: "bold", fontSize: "1.1rem" }}>+5 monedas</span>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px", maxWidth: "220px", margin: "0 auto 30px" }}>
                 {cromosGanados.map((cromo, i) => (
                   <div key={i} style={{ borderRadius: "12px", border: `2px solid ${getBorderColor(cromo.rareza)}`, overflow: "hidden", background: "#1e293b", animation: `fadeInUp 0.4s ease-out ${i * 0.15}s both` }}>
