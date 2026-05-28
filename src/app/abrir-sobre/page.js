@@ -22,6 +22,7 @@ export default function AbrirSobrePage() {
   const [showFlash, setShowFlash] = useState(false);
   const [rachaActual, setRachaActual] = useState(0);
   const [sobresBonus, setSobresBonus] = useState(0);
+  const [megaSobresBonus, setMegaSobresBonus] = useState(0);
   const [sobresRuleta, setSobresRuleta] = useState(0);
   const [rachaMsg, setRachaMsg] = useState(null);
   const [totalSobresAbiertos, setTotalSobresAbiertos] = useState(0);
@@ -88,6 +89,7 @@ export default function AbrirSobrePage() {
             setDatosUsuario(data);
             setSobresHoy(data.fechaUltimoSobre === HOY ? (data.sobresAbiertosHoy || 0) : 0);
             setSobresBonus(data.sobresBonus || 0);
+            setMegaSobresBonus(data.megaSobresBonus || 0);
             setSobresRuleta(data.sobresRuleta || 0);
             setTotalSobresAbiertos(data.totalSobresAbiertos || 0);
             const fecha = data.fechaUltimaApertura || "";
@@ -138,7 +140,7 @@ export default function AbrirSobrePage() {
   };
 
   const maxSobresHoy   = datosUsuario?.fechaMaldicion === HOY ? 1 : MAX_SOBRES;
-  const puedeAbrir     = sobresHoy < maxSobresHoy || sobresBonus > 0 || sobresRuleta > 0;
+  const puedeAbrir     = sobresHoy < maxSobresHoy || sobresBonus > 0 || megaSobresBonus > 0 || sobresRuleta > 0;
   const proximoMega    = MEGA_CADA - (totalSobresAbiertos % MEGA_CADA);
   const siguienteEsMega = proximoMega === MEGA_CADA || proximoMega <= 0;
 
@@ -150,10 +152,11 @@ export default function AbrirSobrePage() {
 
     // --- Anti multi-device: reclamar slot de forma atómica en Firestore ---
     // Si dos dispositivos abren a la vez, solo uno pasa la transacción.
-    let freshSobresHoy    = sobresHoy;
-    let freshMaxSobres    = maxSobresHoy;
-    let freshSobresBonus  = sobresBonus;
-    let freshSobresRuleta = sobresRuleta;
+    let freshSobresHoy      = sobresHoy;
+    let freshMaxSobres      = maxSobresHoy;
+    let freshSobresBonus    = sobresBonus;
+    let freshMegaSobresBonus = megaSobresBonus;
+    let freshSobresRuleta   = sobresRuleta;
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -161,41 +164,47 @@ export default function AbrirSobrePage() {
         const snap = await transaction.get(userRef);
         if (!snap.exists()) throw new Error("no-data");
         const d = snap.data();
-        freshSobresHoy    = d.fechaUltimoSobre === HOY ? (d.sobresAbiertosHoy || 0) : 0;
-        freshMaxSobres    = d.fechaMaldicion === HOY ? 1 : MAX_SOBRES;
-        freshSobresBonus  = d.sobresBonus || 0;
-        freshSobresRuleta = d.sobresRuleta || 0;
+        freshSobresHoy       = d.fechaUltimoSobre === HOY ? (d.sobresAbiertosHoy || 0) : 0;
+        freshMaxSobres       = d.fechaMaldicion === HOY ? 1 : MAX_SOBRES;
+        freshSobresBonus     = d.sobresBonus || 0;
+        freshMegaSobresBonus = d.megaSobresBonus || 0;
+        freshSobresRuleta    = d.sobresRuleta || 0;
 
-        if (freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshSobresRuleta === 0)
+        if (freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus === 0 && freshSobresRuleta === 0)
           throw new Error("limite");
 
-        const _usandoRuleta = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshSobresRuleta > 0;
-        const _usandoBonus  = freshSobresHoy >= freshMaxSobres && freshSobresBonus > 0 && !_usandoRuleta;
+        const _usandoBonus     = freshSobresHoy >= freshMaxSobres && freshSobresBonus > 0;
+        const _usandoMegaBonus = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus > 0;
+        const _usandoRuleta    = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus === 0 && freshSobresRuleta > 0;
         const claim = {};
-        if (!_usandoBonus && !_usandoRuleta) { claim.sobresAbiertosHoy = freshSobresHoy + 1; claim.fechaUltimoSobre = HOY; }
-        if (_usandoBonus)  claim.sobresBonus  = freshSobresBonus - 1;
-        if (_usandoRuleta) claim.sobresRuleta = freshSobresRuleta - 1;
+        if (!_usandoBonus && !_usandoMegaBonus && !_usandoRuleta) { claim.sobresAbiertosHoy = freshSobresHoy + 1; claim.fechaUltimoSobre = HOY; }
+        if (_usandoBonus)     claim.sobresBonus     = freshSobresBonus - 1;
+        if (_usandoMegaBonus) claim.megaSobresBonus = freshMegaSobresBonus - 1;
+        if (_usandoRuleta)    claim.sobresRuleta    = freshSobresRuleta - 1;
         transaction.set(userRef, claim, { merge: true });
       });
     } catch (err) {
       // Sincronizar estado local con la realidad (otro dispositivo ya usó el slot)
       setSobresHoy(freshSobresHoy);
       setSobresBonus(freshSobresBonus);
+      setMegaSobresBonus(freshMegaSobresBonus);
       setSobresRuleta(freshSobresRuleta);
       abriendoRef.current = false;
       return;
     }
 
     // Calcular desde valores frescos de Firestore
-    const usandoRuleta = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshSobresRuleta > 0;
-    const usandoBonus  = freshSobresHoy >= freshMaxSobres && freshSobresBonus > 0 && !usandoRuleta;
-    const mega = !usandoRuleta && siguienteEsMega;
+    const usandoBonus     = freshSobresHoy >= freshMaxSobres && freshSobresBonus > 0;
+    const usandoMegaBonus = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus > 0;
+    const usandoRuleta    = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus === 0 && freshSobresRuleta > 0;
+    const mega = (!usandoRuleta && siguienteEsMega) || usandoMegaBonus;
     setEsMegaSobre(mega);
     setEsSobreRuleta(usandoRuleta);
     // Sincronizar contadores locales con lo que se reclamó
-    if (!usandoBonus && !usandoRuleta) setSobresHoy(freshSobresHoy + 1);
-    if (usandoBonus)  setSobresBonus(freshSobresBonus - 1);
-    if (usandoRuleta) setSobresRuleta(freshSobresRuleta - 1);
+    if (!usandoBonus && !usandoMegaBonus && !usandoRuleta) setSobresHoy(freshSobresHoy + 1);
+    if (usandoBonus)     setSobresBonus(freshSobresBonus - 1);
+    if (usandoMegaBonus) setMegaSobresBonus(freshMegaSobresBonus - 1);
+    if (usandoRuleta)    setSobresRuleta(freshSobresRuleta - 1);
     abriendoRef.current = false; // a partir de aquí fase cambia a "abriendo", el guard ya no hace falta
 
     setFase("abriendo");
@@ -239,8 +248,9 @@ export default function AbrirSobrePage() {
       if (usandoBonus) { nuevoBonus = freshSobresBonus - 1; setSobresBonus(nuevoBonus); }
     }
 
-    // Ruleta (ya reclamado en la transacción, calcular para write de Firestore)
-    const nuevoSobresRuleta = usandoRuleta ? freshSobresRuleta - 1 : freshSobresRuleta;
+    // Mega / Ruleta (ya reclamados en la transacción, calcular para write de Firestore)
+    const nuevoMegaSobresBonus = usandoMegaBonus ? freshMegaSobresBonus - 1 : freshMegaSobresBonus;
+    const nuevoSobresRuleta    = usandoRuleta    ? freshSobresRuleta    - 1 : freshSobresRuleta;
 
     const cantidadCromos = mega ? CROMOS_MEGA : CROMOS_NORMAL;
     const nuevos = [];
@@ -287,6 +297,7 @@ export default function AbrirSobrePage() {
     try {
       setDoc(doc(db, "usuarios", user.uid), {
         rachaActual: nuevaRacha, fechaUltimaApertura: HOY, sobresBonus: nuevoBonus,
+        megaSobresBonus: nuevoMegaSobresBonus,
         sobresRuleta: nuevoSobresRuleta,
         totalSobresAbiertos: (totalSobresAbiertos || 0) + 1,
       }, { merge: true });
@@ -476,6 +487,9 @@ export default function AbrirSobrePage() {
           {sobresBonus > 0 && (
             <span style={{ background: "#f59e0b", color: "#000", padding: "2px 8px", borderRadius: "10px", fontWeight: "bold", fontSize: "0.75rem" }}>🎁 {sobresBonus}</span>
           )}
+          {megaSobresBonus > 0 && (
+            <span style={{ background: "linear-gradient(135deg, #fbbf24, #f59e0b)", color: "#000", padding: "2px 8px", borderRadius: "10px", fontWeight: "bold", fontSize: "0.75rem" }}>⭐ {megaSobresBonus}</span>
+          )}
         </div>
       </div>
 
@@ -616,7 +630,12 @@ export default function AbrirSobrePage() {
                   <p style={{ margin: 0, color: "#fbbf24", fontWeight: "bold", fontSize: "0.9rem" }}>🎁 Usando sobre bonus ({sobresBonus})</p>
                 </div>
               )}
-              {sobresRuleta > 0 && sobresHoy >= maxSobresHoy && sobresBonus === 0 && (
+              {megaSobresBonus > 0 && sobresHoy >= maxSobresHoy && sobresBonus === 0 && (
+                <div style={{ background: "linear-gradient(135deg, #2d1a00, #1e293b)", padding: "10px", borderRadius: "12px", marginBottom: "12px", border: "1px solid #fbbf24" }}>
+                  <p style={{ margin: 0, color: "#fbbf24", fontWeight: "bold", fontSize: "0.9rem" }}>⭐ Usando Mega Sobre ({megaSobresBonus})</p>
+                </div>
+              )}
+              {sobresRuleta > 0 && sobresHoy >= maxSobresHoy && sobresBonus === 0 && megaSobresBonus === 0 && (
                 <div style={{ background: "linear-gradient(135deg, #0a1f2e, #1e293b)", padding: "10px", borderRadius: "12px", marginBottom: "12px", border: "1px solid #3b82f6" }}>
                   <p style={{ margin: 0, color: "#60a5fa", fontWeight: "bold", fontSize: "0.9rem" }}>🎰 Usando sobre de ruleta ({sobresRuleta})</p>
                 </div>

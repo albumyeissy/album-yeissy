@@ -6,7 +6,7 @@ import {
   doc, getDoc, getDocs, collection, runTransaction, setDoc,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { CROMOS } from "../../data/cromos";
+import { CROMOS, PAGINAS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
 import { getFeatures, isTiendaAvailable } from "../../lib/featuresHelper";
 
@@ -18,6 +18,7 @@ const MAX_COMPRAS = 3;
 
 const ITEMS = [
   { id: "sobre",            emoji: "📦", nombre: "Sobre extra",           precio: 20, requiereJugador: false, desc: "Consigue un sobre adicional hoy." },
+  { id: "mega_sobre",       emoji: "🎁", nombre: "Mega Sobre",            precio: 30, requiereJugador: false, desc: "Consigue 3 sobres adicionales de golpe." },
   { id: "proteccion",       emoji: "🛡️", nombre: "Protección de racha",   precio: 15, requiereJugador: false, desc: "Mañana no perderás la racha aunque no abras sobres (también anula maldiciones de racha)." },
   { id: "robo_cr",          emoji: "🎯", nombre: "Robo común/rara",        precio: 30, requiereJugador: true,  desc: "Elige un jugador, ve sus cartas comunes y raras (sin saber si son únicas) y roba una." },
   { id: "robo_leg",         emoji: "⭐", nombre: "Robo legendaria",        precio: 35, requiereJugador: true,  desc: "Elige un jugador, ve sus legendarias (sin saber si son únicas) y roba una." },
@@ -26,6 +27,19 @@ const ITEMS = [
 ];
 
 const RAREZA_ORDER = { mitica: 3, legendaria: 2, rara: 1, comun: 0 };
+
+// Devuelve un Set con los IDs de página cuya colección completa posee el jugador
+const getPaginasCompletas = (cromos) => {
+  const tieneIds = new Set((cromos || []).filter((c) => c.cantidad > 0).map((c) => c.cromoId));
+  const completadas = new Set();
+  for (const pag of PAGINAS) {
+    const delPag = CROMOS.filter((c) => c.pagina === pag.id);
+    if (delPag.length > 0 && delPag.every((c) => tieneIds.has(c.id))) {
+      completadas.add(pag.id);
+    }
+  }
+  return completadas;
+};
 
 export default function TiendaPage() {
   const [user, setUser]           = useState(null);
@@ -49,6 +63,9 @@ export default function TiendaPage() {
   const [okMsg, setOkMsg]         = useState("");
   const [error, setError]         = useState("");
   const [loadingAccion, setLoadingAccion] = useState(false);
+
+  // Protección de página
+  const [cromosProtegidosCount, setCromosProtegidosCount] = useState(0);
 
   // Vender
   const [cantVenta, setCantVenta] = useState({});
@@ -167,16 +184,23 @@ export default function TiendaPage() {
       const rarezaFiltro = itemActual.id === "robo_leg"
         ? ["legendaria"]
         : ["comun", "rara"];
-      // Solo cartas que tiene (cantidad > 0), sin revelar si son únicas
-      const filtradas = cromos
-        .filter((c) => c.cantidad > 0 && rarezaFiltro.includes(
-          CROMOS.find((x) => x.id === c.cromoId)?.rareza
-        ))
+      // Páginas completadas por la víctima → sus cartas están protegidas
+      const paginasProtegidas = getPaginasCompletas(cromos);
+      // Solo cartas que tiene (cantidad > 0), sin revelar si son únicas, y sin páginas protegidas
+      const candidatas = cromos.filter((c) => c.cantidad > 0 && rarezaFiltro.includes(
+        CROMOS.find((x) => x.id === c.cromoId)?.rareza
+      ));
+      const filtradas = candidatas
+        .filter((c) => {
+          const info = CROMOS.find((x) => x.id === c.cromoId);
+          return !paginasProtegidas.has(info?.pagina);
+        })
         .map((c) => {
           const info = CROMOS.find((x) => x.id === c.cromoId);
           return { cromoId: c.cromoId, nombre: info?.nombre || "?", imagen: info?.imagen, rareza: info?.rareza };
         })
         .sort((a, b) => (RAREZA_ORDER[b.rareza] || 0) - (RAREZA_ORDER[a.rareza] || 0));
+      setCromosProtegidosCount(candidatas.length - filtradas.length);
       setCartasVictima(filtradas);
       setFase("carta_robo");
     } catch (err) { setError("Error cargando cartas."); }
@@ -208,6 +232,14 @@ export default function TiendaPage() {
           tx.set(miRef, {
             monedas: nuevasMonedas,
             sobresBonus: (d.sobresBonus || 0) + 1,
+            comprasHoy: nuevasCompras,
+            fechaUltimaCompra: HOY,
+          }, { merge: true });
+
+        } else if (item.id === "mega_sobre") {
+          tx.set(miRef, {
+            monedas: nuevasMonedas,
+            megaSobresBonus: (d.megaSobresBonus || 0) + 1,
             comprasHoy: nuevasCompras,
             fechaUltimaCompra: HOY,
           }, { merge: true });
@@ -251,6 +283,12 @@ export default function TiendaPage() {
           if (idx === -1 || cromosVictima[idx].cantidad < 1)
             throw new Error("carta-no-disponible");
 
+          // Verificar que la página no está completada (armadura)
+          const paginasProtegidasTx = getPaginasCompletas(cromosVictima);
+          const infoCarta = CROMOS.find((x) => x.id === cartaId);
+          if (infoCarta && paginasProtegidasTx.has(infoCarta.pagina))
+            throw new Error("pagina-protegida");
+
           // Quitar de víctima (borrar si cantidad llega a 0)
           const nuevasCromosVictima = cromosVictima
             .map((c) => c.cromoId === cartaId ? { ...c, cantidad: c.cantidad - 1 } : c)
@@ -280,6 +318,9 @@ export default function TiendaPage() {
 
       if (item.id === "sobre") {
         setOkMsg("📦 ¡Sobre bonus añadido! Ábrelo en la pantalla de sobres.");
+        setFase("ok");
+      } else if (item.id === "mega_sobre") {
+        setOkMsg("⭐ ¡Mega Sobre añadido! Ábrelo desde la pantalla de sobres.");
         setFase("ok");
       } else if (item.id === "proteccion") {
         setOkMsg("🛡️ Racha protegida para mañana.");
@@ -315,6 +356,7 @@ export default function TiendaPage() {
         "sin-monedas": "No tienes suficientes monedas.",
         "limite": `Límite de ${MAX_COMPRAS} compras diarias alcanzado.`,
         "carta-no-disponible": "Esa carta ya no está disponible.",
+        "pagina-protegida": "🛡️ Esa carta está protegida: el jugador ha completado esa página.",
         "faltan-datos": "Error interno.",
         "victima-no-encontrada": "El jugador no existe.",
       }[err.message] || "Error al procesar la compra.";
@@ -388,6 +430,7 @@ export default function TiendaPage() {
     setEspiarResultado(null);
     setOkMsg("");
     setError("");
+    setCromosProtegidosCount(0);
   };
 
   const getBorderColor = (r) =>
@@ -629,7 +672,15 @@ export default function TiendaPage() {
             {fase === "carta_robo" && (
               <>
                 <h2 style={{ textAlign: "center", fontSize: "1rem", marginBottom: "4px" }}>Elige una carta para robar</h2>
-                <p style={{ textAlign: "center", color: "#64748b", fontSize: "0.8rem", marginBottom: "16px" }}>de {jugadorObj?.nombre || jugadorObj?.email}</p>
+                <p style={{ textAlign: "center", color: "#64748b", fontSize: "0.8rem", marginBottom: "12px" }}>de {jugadorObj?.nombre || jugadorObj?.email}</p>
+                {cromosProtegidosCount > 0 && (
+                  <div style={{ background: "rgba(16,185,129,0.08)", border: "1px solid #10b981", borderRadius: "10px", padding: "8px 12px", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "1.1rem" }}>🛡️</span>
+                    <p style={{ margin: 0, fontSize: "0.75rem", color: "#10b981" }}>
+                      {cromosProtegidosCount} carta{cromosProtegidosCount !== 1 ? "s" : ""} protegida{cromosProtegidosCount !== 1 ? "s" : ""} por página completada
+                    </p>
+                  </div>
+                )}
                 {error && <p style={{ color: "#f87171", textAlign: "center", fontSize: "0.85rem" }}>{error}</p>}
                 {cartasVictima.length === 0 ? (
                   <p style={{ textAlign: "center", color: "#64748b" }}>Este jugador no tiene cartas de ese tipo.</p>

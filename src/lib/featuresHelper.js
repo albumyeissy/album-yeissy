@@ -16,9 +16,12 @@ export const isRuletaAvailable = (features) => {
   return false;
 };
 
+const TIENDA_RELEASE_DATE = new Date("2026-05-28T00:00:00");
+
 export const isTiendaAvailable = (features) => {
   if (features?.tiendaDesactivada) return false;
   if (features?.tienda === true) return true;
   if (features?.tiendaFecha) return new Date() >= new Date(features.tiendaFecha);
-  return false;
+  // Fallback: fecha de lanzamiento hardcodeada
+  return new Date() >= TIENDA_RELEASE_DATE;
 };
