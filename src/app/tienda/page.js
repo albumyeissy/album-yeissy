@@ -67,6 +67,9 @@ export default function TiendaPage() {
   // Protección de página
   const [cromosProtegidosCount, setCromosProtegidosCount] = useState(0);
 
+  // Cartas comprometidas en ofertas activas del mercado { cromoId: count }
+  const [enOfertaMercado, setEnOfertaMercado] = useState({});
+
   // Vender
   const [cantVenta, setCantVenta] = useState({});
 
@@ -131,6 +134,22 @@ export default function TiendaPage() {
           setComprasHoy(d.fechaUltimaCompra === HOY ? (d.comprasHoy || 0) : 0);
           setMisDatos(d);
         }
+        // Cartas comprometidas en ofertas activas del mercado
+        try {
+          const ventasSnap = await getDocs(collection(db, "ventas"));
+          const ofertaCount = {};
+          ventasSnap.forEach((v) => {
+            const vd = v.data();
+            (vd.ofertas || [])
+              .filter((o) => o.ofertanteId === u.uid)
+              .forEach((o) => {
+                (o.cromos || []).forEach((c) => {
+                  ofertaCount[c.cromoId] = (ofertaCount[c.cromoId] || 0) + 1;
+                });
+              });
+          });
+          setEnOfertaMercado(ofertaCount);
+        } catch (err) { console.error("Error cargando ofertas mercado:", err); }
       } catch (err) { console.error(err); }
       setLoading(false);
     });
@@ -382,12 +401,29 @@ export default function TiendaPage() {
     setLoadingAccion(true);
     setError("");
     try {
+      // Pre-check: asegurarse de que no se venden cartas comprometidas en ofertas activas
+      for (const [cromoId, cant] of entradas) {
+        const carta = misDatos?.cromos?.find((c) => c.cromoId === parseInt(cromoId));
+        const reservado = enOfertaMercado[parseInt(cromoId)] || 0;
+        if (carta && (carta.cantidad - cant) < (reservado + 1)) {
+          const info = CROMOS.find((x) => x.id === parseInt(cromoId));
+          setError(`No puedes vender "${info?.nombre || cromoId}": tienes ${reservado} comprometida${reservado !== 1 ? "s" : ""} en oferta${reservado !== 1 ? "s" : ""} del mercado.`);
+          setLoadingAccion(false);
+          return;
+        }
+      }
       await runTransaction(db, async (tx) => {
         const miRef = doc(db, "usuarios", user.uid);
         const miSnap = await tx.get(miRef);
         if (!miSnap.exists()) throw new Error("no-data");
         const d = miSnap.data();
         const cromosActuales = d.cromos || [];
+        // Verificación dentro de la transacción también
+        for (const [cromoId, cant] of entradas) {
+          const c = cromosActuales.find((x) => x.cromoId === parseInt(cromoId));
+          const reservado = enOfertaMercado[parseInt(cromoId)] || 0;
+          if (!c || (c.cantidad - cant) < (reservado + 1)) throw new Error("carta-en-oferta");
+        }
         let ganancias = 0;
         const cromosActualizados = cromosActuales.map((c) => {
           const vender = cantVenta[c.cromoId] || 0;
@@ -415,7 +451,11 @@ export default function TiendaPage() {
       setFase("ok");
       setTab("tienda");
     } catch (err) {
-      setError("Error al vender. Inténtalo de nuevo.");
+      if (err.message === "carta-en-oferta") {
+        setError("No puedes vender una carta que tienes comprometida en una oferta del mercado.");
+      } else {
+        setError("Error al vender. Inténtalo de nuevo.");
+      }
     }
     setLoadingAccion(false);
   };
@@ -436,15 +476,17 @@ export default function TiendaPage() {
   const getBorderColor = (r) =>
     r === "legendaria" ? "#fbbf24" : r === "rara" ? "#3b82f6" : r === "mitica" ? "#ef4444" : "#94a3b8";
 
-  // Repetidas vendibles (cantidad > 1, no mitica)
+  // Repetidas vendibles (cantidad > 1 + reservadas en ofertas, no mitica)
   const repetidas = (misDatos?.cromos || [])
     .filter((c) => {
       const info = CROMOS.find((x) => x.id === c.cromoId);
-      return c.cantidad > 1 && info?.rareza !== "mitica";
+      const reservado = enOfertaMercado[c.cromoId] || 0;
+      return (c.cantidad - reservado) > 1 && info?.rareza !== "mitica";
     })
     .map((c) => {
       const info = CROMOS.find((x) => x.id === c.cromoId);
-      return { ...c, nombre: info?.nombre || "?", imagen: info?.imagen, rareza: info?.rareza || "comun" };
+      const reservado = enOfertaMercado[c.cromoId] || 0;
+      return { ...c, nombre: info?.nombre || "?", imagen: info?.imagen, rareza: info?.rareza || "comun", reservado };
     })
     .sort((a, b) => (RAREZA_ORDER[b.rareza] || 0) - (RAREZA_ORDER[a.rareza] || 0));
 
@@ -591,7 +633,7 @@ export default function TiendaPage() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
                 {repetidas.map((c) => {
-                  const max = c.cantidad - 1; // mínimo 1 se queda
+                  const max = c.cantidad - 1 - (c.reservado || 0); // mínimo 1 + reservadas en ofertas
                   const sel = cantVenta[c.cromoId] || 0;
                   return (
                     <div key={c.cromoId} style={{ display: "flex", alignItems: "center", gap: "10px", background: "#1e293b", borderRadius: "12px", padding: "10px 12px", border: `1px solid ${getBorderColor(c.rareza)}30` }}>
@@ -600,6 +642,7 @@ export default function TiendaPage() {
                         <p style={{ margin: "0 0 2px", fontWeight: "bold", fontSize: "0.85rem" }}>{c.nombre}</p>
                         <p style={{ margin: 0, fontSize: "0.72rem", color: "#64748b" }}>
                           {PRECIO_VENTA[c.rareza]}🪙 c/u · tienes ×{c.cantidad}
+                          {c.reservado > 0 && <span style={{ color: "#f59e0b" }}> · 🤝×{c.reservado} en oferta</span>}
                         </p>
                       </div>
                       {/* Selector cantidad */}
@@ -612,6 +655,7 @@ export default function TiendaPage() {
                   );
                 })}
               </div>
+              {error && <p style={{ color: "#f87171", fontSize: "0.85rem", marginBottom: "10px", textAlign: "center" }}>{error}</p>}
               <button onClick={ejecutarVenta} disabled={monedasPorVenta() === 0 || loadingAccion} style={{
                 width: "100%", padding: "14px", borderRadius: "14px", border: "none",
                 background: monedasPorVenta() > 0 ? "linear-gradient(135deg, #f59e0b, #d97706)" : "#334155",
