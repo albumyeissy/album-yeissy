@@ -463,21 +463,43 @@ export default function AlbumPage() {
                 >→</button>
               </div>
 
-              {/* Fondo de "página de álbum" */}
+              {/* Fondo de "página de álbum" — holográfico si completa */}
+              <div style={{
+                borderRadius: "22px",
+                padding: completaPage ? "2px" : "0",
+                background: completaPage
+                  ? "linear-gradient(135deg, #ffd700, #ff69b4, #a78bfa, #60a5fa, #34d399, #ffd700)"
+                  : "transparent",
+                animation: completaPage ? "holoRainbow 3s linear infinite" : "none",
+              }}>
               <div style={{
                 background: "linear-gradient(145deg, #1a1f2e, #161b28)",
                 borderRadius: "20px",
                 padding: "18px",
-                border: "1px solid #2a3040",
+                border: completaPage ? "none" : "1px solid #2a3040",
                 boxShadow: "inset 0 2px 10px rgba(0,0,0,0.3), 0 5px 20px rgba(0,0,0,0.2)",
+                position: "relative",
+                overflow: "hidden",
               }}>
+                {/* Barrido de luz sobre toda la página */}
+                {completaPage && (
+                  <div style={{
+                    position: "absolute", top: 0, bottom: 0, left: 0,
+                    width: "30%",
+                    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)",
+                    animation: "holoSweep 3s ease-in-out infinite",
+                    animationDelay: "0.5s",
+                    pointerEvents: "none", zIndex: 10,
+                  }} />
+                )}
                 {/* Grid de cromos estilo pegatina */}
                 <div style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(3, 1fr)",
                   gap: "14px",
                   maxWidth: "400px",
-                  margin: "0 auto"
+                  margin: "0 auto",
+                  position: "relative", zIndex: 1,
                 }}>
                   {cromosPage.map((cromo) => {
                     const pegado = estaPegado(cromo.id);
@@ -514,9 +536,15 @@ export default function AlbumPage() {
                             animation: "glowPulse 1.5s infinite",
                             border: "3px solid rgba(251,191,36,0.5)",
                             borderRadius: "12px",
+                          } : pegado && completaPage ? {
+                            border: `3px solid ${getBorderColor(cromo.rareza)}`,
+                            boxShadow: `3px 3px 8px rgba(0,0,0,0.4),
+                              0 0 8px rgba(251,191,36,0.5),
+                              0 0 14px rgba(236,72,153,0.3),
+                              0 0 20px rgba(139,92,246,0.2)`,
                           } : pegado ? {
                             border: `3px solid ${getBorderColor(cromo.rareza)}`,
-                            boxShadow: `3px 3px 8px rgba(0,0,0,0.4), 
+                            boxShadow: `3px 3px 8px rgba(0,0,0,0.4),
                               0 0 ${cromo.rareza === "legendaria" ? "15px rgba(251,191,36,0.3)" : "0px transparent"}`,
                           } : {
                             border: "3px dashed #2a3040",
@@ -631,6 +659,7 @@ export default function AlbumPage() {
                     );
                   })}
                 </div>
+              </div>
               </div>
             </div>
           );

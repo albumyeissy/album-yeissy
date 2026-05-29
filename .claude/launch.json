@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "yeissypoly-dev",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": ["C:\\Users\\JC\\Documents\\yeissypoly\\node_modules\\next\\dist\\bin\\next", "dev", "C:\\Users\\JC\\Documents\\yeissypoly", "--port", "3001"],
+      "port": 3001
+    }
+  ]
+}
