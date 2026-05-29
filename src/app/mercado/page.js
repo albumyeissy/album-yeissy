@@ -153,17 +153,30 @@ export default function MercadoPage() {
   const misVentas   = ventas.filter((v) => v.vendedorId === user?.uid);
 
   // Repetidos disponibles: carta con (cantidad - reservada) > 1
-  // Fix: si una carta está en venta, se reserva 1 pero las demás siguen disponibles para ofertar
+  // Reserva 1 por cada venta activa Y 1 por cada oferta activa con esa carta
   const getMisRepetidos = () => {
     if (!misDatos?.cromos) return [];
     const enVenta = new Set(misVentas.map((v) => v.cromoId));
+
+    // Contar cuántas veces cada carta está comprometida en ofertas activas del usuario
+    const enOfertaCount = {};
+    ventas.forEach((v) => {
+      (v.ofertas || [])
+        .filter((o) => o.ofertanteId === user?.uid)
+        .forEach((o) => {
+          (o.cromos || []).forEach((c) => {
+            enOfertaCount[c.cromoId] = (enOfertaCount[c.cromoId] || 0) + 1;
+          });
+        });
+    });
+
     return misDatos.cromos
       .filter((c) => {
-        const reservada = enVenta.has(c.cromoId) ? 1 : 0;
+        const reservada = (enVenta.has(c.cromoId) ? 1 : 0) + (enOfertaCount[c.cromoId] || 0);
         return (c.cantidad - reservada) > 1;
       })
       .map((c) => {
-        const reservada = enVenta.has(c.cromoId) ? 1 : 0;
+        const reservada = (enVenta.has(c.cromoId) ? 1 : 0) + (enOfertaCount[c.cromoId] || 0);
         return { ...c, info: getCromoInfo(c.cromoId), sobrantes: c.cantidad - 1 - reservada };
       })
       .filter((c) => c.info);
@@ -195,6 +208,18 @@ export default function MercadoPage() {
     if (!cromoAVender) return;
     const info = getCromoInfo(cromoAVender);
     if (!info) return;
+
+    // Pre-check: la carta no puede estar en una oferta activa del usuario
+    const cartaEnOferta = ventas.some((v) =>
+      (v.ofertas || []).some((o) =>
+        o.ofertanteId === user.uid &&
+        (o.cromos || []).some((c) => c.cromoId === cromoAVender)
+      )
+    );
+    if (cartaEnOferta) {
+      showMsg("❌ Esa carta ya está comprometida en una oferta activa", "error");
+      return;
+    }
 
     try {
       await runTransaction(db, async (tx) => {
@@ -244,6 +269,15 @@ export default function MercadoPage() {
   const hacerOferta = async () => {
     if (!ventaSeleccionada || !cromosOferta.length) return;
     if (!cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)) return;
+
+    // Pre-check: ninguna carta ofertada puede estar en una venta activa del usuario
+    const enMisVentas = new Set(misVentas.map((v) => v.cromoId));
+    const cartaEnVenta = cromosOferta.find((id) => enMisVentas.has(id));
+    if (cartaEnVenta) {
+      const nombreCarta = getCromoInfo(cartaEnVenta)?.nombre || "esa carta";
+      showMsg(`❌ "${nombreCarta}" está puesta en venta — retírala antes de ofertarla`, "error");
+      return;
+    }
 
     try {
       await runTransaction(db, async (tx) => {
@@ -309,6 +343,15 @@ export default function MercadoPage() {
   const guardarEdicionOferta = async () => {
     if (!ventaSeleccionada || !cromosOferta.length) return;
     if (!cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)) return;
+
+    // Pre-check: ninguna carta ofertada puede estar en una venta activa del usuario
+    const enMisVentasEd = new Set(misVentas.map((v) => v.cromoId));
+    const cartaEnVentaEd = cromosOferta.find((id) => enMisVentasEd.has(id));
+    if (cartaEnVentaEd) {
+      const nombreCarta = getCromoInfo(cartaEnVentaEd)?.nombre || "esa carta";
+      showMsg(`❌ "${nombreCarta}" está puesta en venta — retírala antes de ofertarla`, "error");
+      return;
+    }
 
     try {
       await runTransaction(db, async (tx) => {
