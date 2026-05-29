@@ -269,10 +269,6 @@ export default function AlbumPage() {
           0%, 100% { box-shadow: 0 -4px 16px rgba(245,158,11,0.4), 0 4px 12px rgba(0,0,0,0.5); }
           50% { box-shadow: 0 -4px 32px rgba(245,158,11,0.9), 0 0 24px rgba(245,158,11,0.5), 0 4px 12px rgba(0,0,0,0.5); }
         }
-        @keyframes holoRainbow {
-          0%   { filter: hue-rotate(0deg) saturate(1.3); }
-          100% { filter: hue-rotate(360deg) saturate(1.3); }
-        }
         @keyframes holoShieldPulse {
           0%, 100% { box-shadow: 0 0 0 1px rgba(16,185,129,0.3); }
           50%       { box-shadow: 0 0 12px 2px rgba(16,185,129,0.25); }
@@ -361,24 +357,23 @@ export default function AlbumPage() {
                 padding: "20px 15px 90px 15px",
               }}
             >
-              {/* Título de página — holográfico si completa, blindado si armada */}
-              <div style={{
-                marginBottom: "20px", borderRadius: "16px",
-                padding: completaPage ? "2px" : "0",
-                background: completaPage
-                  ? "linear-gradient(135deg, #ffd700, #ff69b4, #a78bfa, #60a5fa, #34d399, #ffd700)"
-                  : "transparent",
-                animation: completaPage ? "holoRainbow 3s linear infinite" : "none",
-              }}>
+              {/* Título de página */}
+              <div style={{ marginBottom: "20px" }}>
                 <div style={{
                   textAlign: "center",
                   borderRadius: "14px",
                   padding: "12px 8px",
-                  position: "relative",
-                  overflow: "hidden",
-                  background: completaPage ? "#0f172a" : "transparent",
+                  border: completaPage
+                    ? "1px solid #fbbf24"
+                    : armaPage
+                    ? "1px solid rgba(16,185,129,0.4)"
+                    : "none",
+                  background: completaPage
+                    ? "rgba(251,191,36,0.05)"
+                    : armaPage
+                    ? "rgba(16,185,129,0.05)"
+                    : "transparent",
                   ...(armaPage && !completaPage ? {
-                    background: "rgba(16,185,129,0.05)",
                     animation: "holoShieldPulse 2.5s ease-in-out infinite",
                   } : {}),
                 }}>
@@ -446,20 +441,12 @@ export default function AlbumPage() {
                 >→</button>
               </div>
 
-              {/* Fondo de "página de álbum" — holográfico si completa */}
-              <div style={{
-                borderRadius: "22px",
-                padding: completaPage ? "2px" : "0",
-                background: completaPage
-                  ? "linear-gradient(135deg, #ffd700, #ff69b4, #a78bfa, #60a5fa, #34d399, #ffd700)"
-                  : "transparent",
-                animation: completaPage ? "holoRainbow 3s linear infinite" : "none",
-              }}>
+              {/* Fondo de "página de álbum" */}
               <div style={{
                 background: "linear-gradient(145deg, #1a1f2e, #161b28)",
                 borderRadius: "20px",
                 padding: "18px",
-                border: completaPage ? "none" : "1px solid #2a3040",
+                border: completaPage ? "1px solid #fbbf24" : "1px solid #2a3040",
                 boxShadow: "inset 0 2px 10px rgba(0,0,0,0.3), 0 5px 20px rgba(0,0,0,0.2)",
                 position: "relative",
                 overflow: "hidden",
@@ -625,7 +612,6 @@ export default function AlbumPage() {
                     );
                   })}
                 </div>
-              </div>
               </div>
             </div>
           );
