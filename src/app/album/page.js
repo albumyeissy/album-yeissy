@@ -273,12 +273,6 @@ export default function AlbumPage() {
           0%   { filter: hue-rotate(0deg) saturate(1.3); }
           100% { filter: hue-rotate(360deg) saturate(1.3); }
         }
-        @keyframes holoSweep {
-          0%   { transform: translateX(-250%) skewX(-20deg); opacity: 0; }
-          15%  { opacity: 1; }
-          85%  { opacity: 1; }
-          100% { transform: translateX(600%) skewX(-20deg); opacity: 0; }
-        }
         @keyframes holoShieldPulse {
           0%, 100% { box-shadow: 0 0 0 1px rgba(16,185,129,0.3); }
           50%       { box-shadow: 0 0 12px 2px rgba(16,185,129,0.25); }
@@ -388,17 +382,6 @@ export default function AlbumPage() {
                     animation: "holoShieldPulse 2.5s ease-in-out infinite",
                   } : {}),
                 }}>
-                  {/* Barrido de luz holográfica */}
-                  {completaPage && (
-                    <div style={{
-                      position: "absolute", top: 0, bottom: 0, left: 0,
-                      width: "35%",
-                      background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)",
-                      animation: "holoSweep 2.8s ease-in-out infinite",
-                      animationDelay: "0.8s",
-                      pointerEvents: "none", zIndex: 1,
-                    }} />
-                  )}
                   <span style={{ fontSize: "2.5rem", position: "relative", zIndex: 2 }}>{pagina.emoji}</span>
                   <h2 style={{
                     fontSize: "1.4rem", margin: "8px 0 4px",
@@ -481,17 +464,6 @@ export default function AlbumPage() {
                 position: "relative",
                 overflow: "hidden",
               }}>
-                {/* Barrido de luz sobre toda la página */}
-                {completaPage && (
-                  <div style={{
-                    position: "absolute", top: 0, bottom: 0, left: 0,
-                    width: "30%",
-                    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)",
-                    animation: "holoSweep 3s ease-in-out infinite",
-                    animationDelay: "0.5s",
-                    pointerEvents: "none", zIndex: 10,
-                  }} />
-                )}
                 {/* Grid de cromos estilo pegatina */}
                 <div style={{
                   display: "grid",
@@ -536,12 +508,6 @@ export default function AlbumPage() {
                             animation: "glowPulse 1.5s infinite",
                             border: "3px solid rgba(251,191,36,0.5)",
                             borderRadius: "12px",
-                          } : pegado && completaPage ? {
-                            border: `3px solid ${getBorderColor(cromo.rareza)}`,
-                            boxShadow: `3px 3px 8px rgba(0,0,0,0.4),
-                              0 0 8px rgba(251,191,36,0.5),
-                              0 0 14px rgba(236,72,153,0.3),
-                              0 0 20px rgba(139,92,246,0.2)`,
                           } : pegado ? {
                             border: `3px solid ${getBorderColor(cromo.rareza)}`,
                             boxShadow: `3px 3px 8px rgba(0,0,0,0.4),
