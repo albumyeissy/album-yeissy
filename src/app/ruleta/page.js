@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
 import { getFeatures, isRuletaAvailable } from "../../lib/featuresHelper";
+import { getPaginasCompletas } from "../../lib/cromoHelper";
 
 const SECTORES = [
   { id: "sobre",            emoji: "📦", label: "Sobre gratis",       prob: 20 },
@@ -139,12 +140,13 @@ export default function RuletaPage() {
     if (sector.id.startsWith("robar_")) {
       const rareza = sector.id.replace("robar_", "");
       setJugadoresFiltrados(
-        todosJugadores.filter((j) =>
-          (j.cromos || []).some((c) => {
+        todosJugadores.filter((j) => {
+          const paginasProtegidas = getPaginasCompletas(j.cromos);
+          return (j.cromos || []).some((c) => {
             const info = CROMOS.find((x) => x.id === c.cromoId);
-            return info?.rareza === rareza && c.cantidad > 0;
-          })
-        )
+            return info?.rareza === rareza && c.cantidad > 0 && !paginasProtegidas.has(info?.pagina);
+          });
+        })
       );
       setFase("seleccion");
       procesandoRef.current = false; // no async: liberar para handleSeleccion
@@ -216,9 +218,10 @@ export default function RuletaPage() {
       if (userData.fechaRuleta === HOY) throw new Error("ya-jugada-hoy");
 
       const victimCromos = victimData2.cromos || [];
+      const paginasProtegidasTx = getPaginasCompletas(victimCromos);
       const disponibles  = victimCromos.filter((c) => {
         const info = CROMOS.find((x) => x.id === c.cromoId);
-        return info?.rareza === rareza && c.cantidad > 0;
+        return info?.rareza === rareza && c.cantidad > 0 && !paginasProtegidasTx.has(info?.pagina);
       });
 
       if (disponibles.length === 0) {
@@ -648,9 +651,10 @@ export default function RuletaPage() {
             <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
               {jugadoresFiltrados.map((j) => {
                 const rareza = winnerSector?.id.replace("robar_","");
+                const paginasProtegidasJ = getPaginasCompletas(j.cromos);
                 const nCartas = (j.cromos || []).filter((c) => {
                   const info = CROMOS.find((x) => x.id === c.cromoId);
-                  return info?.rareza === rareza && c.cantidad > 0;
+                  return info?.rareza === rareza && c.cantidad > 0 && !paginasProtegidasJ.has(info?.pagina);
                 }).length;
                 return (
                   <button

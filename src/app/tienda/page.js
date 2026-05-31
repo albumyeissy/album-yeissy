@@ -6,9 +6,10 @@ import {
   doc, getDoc, getDocs, collection, runTransaction, setDoc,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
-import { CROMOS, PAGINAS } from "../../data/cromos";
+import { CROMOS } from "../../data/cromos";
 import { addFeedEvent } from "../../lib/feedHelper";
 import { getFeatures, isTiendaAvailable } from "../../lib/featuresHelper";
+import { getPaginasCompletas } from "../../lib/cromoHelper";
 
 const TIENDA_RELEASE = new Date("2026-05-28T00:00:00");
 
@@ -28,18 +29,6 @@ const ITEMS = [
 
 const RAREZA_ORDER = { mitica: 3, legendaria: 2, rara: 1, comun: 0 };
 
-// Devuelve un Set con los IDs de página cuya colección completa posee el jugador
-const getPaginasCompletas = (cromos) => {
-  const tieneIds = new Set((cromos || []).filter((c) => c.cantidad > 0).map((c) => c.cromoId));
-  const completadas = new Set();
-  for (const pag of PAGINAS) {
-    const delPag = CROMOS.filter((c) => c.pagina === pag.id);
-    if (delPag.length > 0 && delPag.every((c) => tieneIds.has(c.id))) {
-      completadas.add(pag.id);
-    }
-  }
-  return completadas;
-};
 
 export default function TiendaPage() {
   const [user, setUser]           = useState(null);

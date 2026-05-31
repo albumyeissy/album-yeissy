@@ -2,6 +2,26 @@
  * cromoHelper.js — operaciones puras sobre arrays de cromos del usuario.
  * Formato: [{ cromoId, cantidad, pegado, fechaObtenido }]
  */
+import { CROMOS, PAGINAS } from "../data/cromos";
+
+/**
+ * Devuelve un Set con los IDs de página cuya colección completa posee el jugador
+ * (cantidad > 0 en todas las cartas de esa página).
+ * Usado para el sistema de blindaje: las páginas completas no se pueden robar.
+ */
+export const getPaginasCompletas = (userCromos) => {
+  const tieneIds = new Set(
+    (userCromos || []).filter((c) => c.cantidad > 0).map((c) => c.cromoId)
+  );
+  const completadas = new Set();
+  for (const pag of PAGINAS) {
+    const delPag = CROMOS.filter((c) => c.pagina === pag.id);
+    if (delPag.length > 0 && delPag.every((c) => tieneIds.has(c.id))) {
+      completadas.add(pag.id);
+    }
+  }
+  return completadas;
+};
 
 /**
  * Añade 1 copia de una carta. Crea la entrada si no existe.
@@ -81,15 +101,17 @@ export const elegirCartaAleatoria = (userCromos, rareza, catalogo, randomFn = Ma
 };
 
 /**
- * Filtra jugadores que tienen al menos 1 carta de la rareza indicada.
+ * Filtra jugadores que tienen al menos 1 carta de la rareza indicada
+ * que NO esté protegida por blindaje de página.
  */
 export const filtrarJugadoresConRareza = (jugadores, rareza, catalogo) =>
-  jugadores.filter((j) =>
-    (j.cromos || []).some((c) => {
+  jugadores.filter((j) => {
+    const paginasProtegidas = getPaginasCompletas(j.cromos);
+    return (j.cromos || []).some((c) => {
       const info = catalogo.find((x) => x.id === c.cromoId);
-      return info?.rareza === rareza && c.cantidad > 0;
-    })
-  );
+      return info?.rareza === rareza && c.cantidad > 0 && !paginasProtegidas.has(info?.pagina);
+    });
+  });
 
 /**
  * Elige una carta pegada al azar para quemar (ruleta "quema").
