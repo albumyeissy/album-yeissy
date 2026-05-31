@@ -41,9 +41,10 @@ export default function MercadoPage() {
   // Hacer oferta / editar oferta (overlay dentro de la tab Mercado)
   const [ventaSeleccionada,  setVentaSeleccionada]  = useState(null);
   const [cromosOferta,       setCromosOferta]       = useState([]);
-  const [vendedorCromos,     setVendedorCromos]     = useState(null); // inventario del vendedor
+  const [monedasOferta,      setMonedasOferta]      = useState(0);
+  const [vendedorCromos,     setVendedorCromos]     = useState(null);
   const [vendedorCargando,   setVendedorCargando]   = useState(false);
-  const [estaEditando,       setEstaEditando]       = useState(false); // true = editar oferta existente
+  const [estaEditando,       setEstaEditando]       = useState(false);
 
   // Modal "Ver y aceptar ofertas" (solo para el vendedor)
   const [ventaVerOfertas, setVentaVerOfertas] = useState(null);
@@ -124,9 +125,9 @@ export default function MercadoPage() {
     setTimeout(() => setMensaje(""), 4000);
   };
 
-  const getCromoInfo  = (id) => CROMOS.find((c) => c.id === id);
-  const getBorder     = (r)  => r === "legendaria" ? "#fbbf24" : r === "rara" ? "#3b82f6" : "#64748b";
-  const getRarezaEmoji = (r) => r === "legendaria" ? "⭐" : r === "rara" ? "💎" : "📄";
+  const getCromoInfo   = (id) => CROMOS.find((c) => c.id === id);
+  const getBorder      = (r)  => r === "legendaria" ? "#fbbf24" : r === "rara" ? "#3b82f6" : "#64748b";
+  const getRarezaEmoji = (r)  => r === "legendaria" ? "⭐" : r === "rara" ? "💎" : "📄";
 
   const timeAgo = (ts) => {
     const diff = Date.now() - new Date(ts).getTime();
@@ -142,23 +143,35 @@ export default function MercadoPage() {
     Math.max(0, Math.round((new Date(fechaExpiracion) - Date.now()) / 3600000));
 
   // ── Estado derivado ─────────────────────────────────────────────────────────
-  const yaVendiHoy  = misDatos?.fechaUltimaVenta === HOY;
 
-  // Ofertas: hasta 3 creaciones/día + 1 intercambio completado/día como ofertante
-  const propuestasHoyCount       = misDatos?.fechaUltimaOferta          === HOY ? (misDatos?.propuestasHoy       || 0) : 0;
-  const intercambiosOfertaHoyCount = misDatos?.fechaUltimaIntercambioOferta === HOY ? (misDatos?.intercambiosOfertaHoy || 0) : 0;
-  const puedeHacerOferta  = propuestasHoyCount < 3 && intercambiosOfertaHoyCount < 1;
-  const ofertasRestantes  = Math.max(0, 3 - propuestasHoyCount);
+  // Ventas del día (máximo 3; bloqueado si ya hizo un intercambio como vendedor)
+  const ventasHoyCount          = misDatos?.fechaUltimaVenta === HOY ? (misDatos?.ventasHoy || 0) : 0;
+  const intercambioVentaHoyFlag = misDatos?.intercambioVentaHoy === HOY;
+  const puedeVender             = ventasHoyCount < 3 && !intercambioVentaHoyFlag;
+  const ventasRestantes         = Math.max(0, 3 - ventasHoyCount);
 
-  const misVentas   = ventas.filter((v) => v.vendedorId === user?.uid);
+  // Ofertas del día
+  const propuestasHoyCount         = misDatos?.fechaUltimaOferta             === HOY ? (misDatos?.propuestasHoy        || 0) : 0;
+  const intercambiosOfertaHoyCount = misDatos?.fechaUltimaIntercambioOferta  === HOY ? (misDatos?.intercambiosOfertaHoy || 0) : 0;
+  const puedeHacerOferta           = propuestasHoyCount < 3 && intercambiosOfertaHoyCount < 1;
+  const ofertasRestantes           = Math.max(0, 3 - propuestasHoyCount);
+
+  // Monedas comprometidas en ofertas activas del usuario
+  const monedasEnOfertas   = ventas.reduce((sum, v) => {
+    (v.ofertas || []).filter((o) => o.ofertanteId === user?.uid)
+      .forEach((o) => { sum += (o.monedas || 0); });
+    return sum;
+  }, 0);
+  const monedasTotales     = misDatos?.monedas ?? 50;
+  const monedasDisponibles = Math.max(0, monedasTotales - monedasEnOfertas);
+
+  const misVentas = ventas.filter((v) => v.vendedorId === user?.uid);
 
   // Repetidos disponibles: carta con (cantidad - reservada) > 1
-  // Reserva 1 por cada venta activa Y 1 por cada oferta activa con esa carta
   const getMisRepetidos = () => {
     if (!misDatos?.cromos) return [];
     const enVenta = new Set(misVentas.map((v) => v.cromoId));
 
-    // Contar cuántas veces cada carta está comprometida en ofertas activas del usuario
     const enOfertaCount = {};
     ventas.forEach((v) => {
       (v.ofertas || [])
@@ -197,13 +210,16 @@ export default function MercadoPage() {
     );
   };
 
+  // Una oferta es válida si cumple el mínimo de cartas O incluye monedas
+  const ofertaEsValida = (rareza, ids, monedas) =>
+    (ids.length > 0 && cumpleMinimo(rareza, ids)) || monedas > 0;
+
   const toggleOferta = (id) =>
     setCromosOferta((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
 
   // ── Acción: Poner en venta ──────────────────────────────────────────────────
-  // Usa runTransaction para marcar el slot atómicamente al crear la venta.
   const ponerEnVenta = async () => {
     if (!cromoAVender) return;
     const info = getCromoInfo(cromoAVender);
@@ -227,7 +243,9 @@ export default function MercadoPage() {
         const userSnap = await tx.get(userRef);
         const datos    = userSnap.data() || {};
 
-        if (datos.fechaUltimaVenta === HOY) throw new Error("ya-vendiste-hoy");
+        if (datos.intercambioVentaHoy === HOY) throw new Error("ya-intercambio-venta");
+        const freshVentasHoy = datos.fechaUltimaVenta === HOY ? (datos.ventasHoy || 0) : 0;
+        if (freshVentasHoy >= 3) throw new Error("ya-3-ventas-hoy");
 
         const cartaActual = (datos.cromos || []).find((c) => c.cromoId === cromoAVender);
         if (!cartaActual || cartaActual.cantidad < 2) throw new Error("sin-repetidas");
@@ -237,17 +255,20 @@ export default function MercadoPage() {
         const exp      = new Date(ahora.getTime() + 24 * 60 * 60 * 1000);
 
         tx.set(ventaRef, {
-          vendedorId:     user.uid,
-          vendedorNombre: misDatos.nombre || misDatos.email || "Jugador",
-          cromoId:        cromoAVender,
-          cromoNombre:    info.nombre,
-          cromoRareza:    info.rareza,
-          cromoImagen:    info.imagen,
-          ofertas:        [],
-          fechaCreacion:  ahora.toISOString(),
+          vendedorId:      user.uid,
+          vendedorNombre:  misDatos.nombre || misDatos.email || "Jugador",
+          cromoId:         cromoAVender,
+          cromoNombre:     info.nombre,
+          cromoRareza:     info.rareza,
+          cromoImagen:     info.imagen,
+          ofertas:         [],
+          fechaCreacion:   ahora.toISOString(),
           fechaExpiracion: exp.toISOString(),
         });
-        tx.set(userRef, { fechaUltimaVenta: HOY }, { merge: true });
+        tx.set(userRef, {
+          ventasHoy:       freshVentasHoy + 1,
+          fechaUltimaVenta: HOY,
+        }, { merge: true });
       });
 
       setCromoAVender(null);
@@ -256,8 +277,9 @@ export default function MercadoPage() {
       await loadData(user.uid);
     } catch (err) {
       const msgs = {
-        "ya-vendiste-hoy": "❌ Ya has puesto una carta a la venta hoy",
-        "sin-repetidas":   "❌ Necesitas tener esa carta repetida para venderla",
+        "ya-intercambio-venta": "❌ Ya completaste un intercambio hoy como vendedor",
+        "ya-3-ventas-hoy":      "❌ Ya has puesto 3 cartas a la venta hoy",
+        "sin-repetidas":        "❌ Necesitas tener esa carta repetida para venderla",
       };
       showMsg(msgs[err.message] || "❌ Error al poner en venta", "error");
       if (!msgs[err.message]) console.error(err);
@@ -265,10 +287,9 @@ export default function MercadoPage() {
   };
 
   // ── Acción: Hacer oferta ────────────────────────────────────────────────────
-  // Límites: 3 creaciones/día y 1 intercambio completado/día. Atómico.
   const hacerOferta = async () => {
-    if (!ventaSeleccionada || !cromosOferta.length) return;
-    if (!cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)) return;
+    if (!ventaSeleccionada) return;
+    if (!ofertaEsValida(ventaSeleccionada.cromoRareza, cromosOferta, monedasOferta)) return;
 
     // Pre-check: ninguna carta ofertada puede estar en una venta activa del usuario
     const enMisVentas = new Set(misVentas.map((v) => v.cromoId));
@@ -276,6 +297,10 @@ export default function MercadoPage() {
     if (cartaEnVenta) {
       const nombreCarta = getCromoInfo(cartaEnVenta)?.nombre || "esa carta";
       showMsg(`❌ "${nombreCarta}" está puesta en venta — retírala antes de ofertarla`, "error");
+      return;
+    }
+    if (monedasOferta > monedasDisponibles) {
+      showMsg(`❌ No tienes suficientes monedas (disponibles: ${monedasDisponibles}🪙)`, "error");
       return;
     }
 
@@ -288,11 +313,12 @@ export default function MercadoPage() {
         const ventaSnap = await tx.get(ventaRef);
 
         const datos = userSnap.data() || {};
-        const freshPropuestas    = datos.fechaUltimaOferta             === HOY ? (datos.propuestasHoy       || 0) : 0;
-        const freshIntercambios  = datos.fechaUltimaIntercambioOferta  === HOY ? (datos.intercambiosOfertaHoy || 0) : 0;
+        const freshPropuestas   = datos.fechaUltimaOferta            === HOY ? (datos.propuestasHoy        || 0) : 0;
+        const freshIntercambios = datos.fechaUltimaIntercambioOferta === HOY ? (datos.intercambiosOfertaHoy || 0) : 0;
 
         if (freshPropuestas  >= 3) throw new Error("propuestas-agotadas");
         if (freshIntercambios >= 1) throw new Error("ya-intercambio-hoy");
+        if ((datos.monedas ?? 50) < monedasOferta) throw new Error("sin-monedas");
 
         if (!ventaSnap.exists()) throw new Error("venta-no-existe");
         const ventaData = ventaSnap.data();
@@ -309,11 +335,12 @@ export default function MercadoPage() {
             const inf = getCromoInfo(id);
             return { cromoId: id, nombre: inf.nombre, rareza: inf.rareza, imagen: inf.imagen };
           }),
+          monedas: monedasOferta,
           fecha: new Date().toISOString(),
         };
 
         tx.set(userRef, {
-          propuestasHoy:   freshPropuestas + 1,
+          propuestasHoy:    freshPropuestas + 1,
           fechaUltimaOferta: HOY,
         }, { merge: true });
         tx.update(ventaRef, { ofertas: [...(ventaData.ofertas || []), nuevaOferta] });
@@ -321,6 +348,7 @@ export default function MercadoPage() {
 
       setVentaSeleccionada(null);
       setCromosOferta([]);
+      setMonedasOferta(0);
       setTab("mercado");
       showMsg("✅ Oferta enviada", "success");
       await loadData(user.uid);
@@ -328,6 +356,7 @@ export default function MercadoPage() {
       const msgs = {
         "propuestas-agotadas": "❌ Ya has agotado tus 3 ofertas de hoy",
         "ya-intercambio-hoy":  "❌ Ya completaste un intercambio hoy",
+        "sin-monedas":         "❌ No tienes suficientes monedas",
         "no-autotrade":        "❌ No puedes ofertar en tu propia venta",
         "venta-no-existe":     "❌ Esta venta ya no existe",
         "venta-expirada":      "❌ Esta venta ha caducado",
@@ -339,12 +368,10 @@ export default function MercadoPage() {
   };
 
   // ── Acción: Guardar edición de oferta existente ────────────────────────────
-  // No consume slot (ya está usado). Solo reemplaza los cromos de la oferta.
   const guardarEdicionOferta = async () => {
-    if (!ventaSeleccionada || !cromosOferta.length) return;
-    if (!cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)) return;
+    if (!ventaSeleccionada) return;
+    if (!ofertaEsValida(ventaSeleccionada.cromoRareza, cromosOferta, monedasOferta)) return;
 
-    // Pre-check: ninguna carta ofertada puede estar en una venta activa del usuario
     const enMisVentasEd = new Set(misVentas.map((v) => v.cromoId));
     const cartaEnVentaEd = cromosOferta.find((id) => enMisVentasEd.has(id));
     if (cartaEnVentaEd) {
@@ -355,14 +382,21 @@ export default function MercadoPage() {
 
     try {
       await runTransaction(db, async (tx) => {
+        const userRef   = doc(db, "usuarios", user.uid);
         const ventaRef  = doc(db, "ventas", ventaSeleccionada.id);
+        const userSnap  = await tx.get(userRef);
         const ventaSnap = await tx.get(ventaRef);
 
         if (!ventaSnap.exists()) throw new Error("venta-no-existe");
         const ventaData = ventaSnap.data();
         if (new Date() > new Date(ventaData.fechaExpiracion)) throw new Error("venta-expirada");
 
-        // Reemplazar los cromos de la oferta del usuario (identificada por ofertanteId)
+        // Calcular monedas disponibles excluyendo la oferta actual
+        const ofertaActual = (ventaData.ofertas || []).find((o) => o.ofertanteId === user.uid);
+        const monedasEnOfertasExcluida = monedasEnOfertas - (ofertaActual?.monedas || 0);
+        const monedasLibres = Math.max(0, (userSnap.data()?.monedas ?? 50) - monedasEnOfertasExcluida);
+        if (monedasOferta > monedasLibres) throw new Error("sin-monedas");
+
         const ofertaIdx = (ventaData.ofertas || []).findIndex((o) => o.ofertanteId === user.uid);
         if (ofertaIdx === -1) throw new Error("oferta-no-encontrada");
         const ofertasActualizadas = [...(ventaData.ofertas || [])];
@@ -372,6 +406,7 @@ export default function MercadoPage() {
             const inf = getCromoInfo(id);
             return { cromoId: id, nombre: inf.nombre, rareza: inf.rareza, imagen: inf.imagen };
           }),
+          monedas: monedasOferta,
           fechaEdicion: new Date().toISOString(),
         };
 
@@ -380,6 +415,7 @@ export default function MercadoPage() {
 
       setVentaSeleccionada(null);
       setCromosOferta([]);
+      setMonedasOferta(0);
       setEstaEditando(false);
       setTab("mis-ofertas");
       showMsg("✅ Oferta actualizada", "success");
@@ -389,6 +425,7 @@ export default function MercadoPage() {
         "venta-no-existe":       "❌ Esta venta ya no existe",
         "venta-expirada":        "❌ Esta venta ha caducado",
         "oferta-no-encontrada":  "❌ Tu oferta ya no existe en esta venta",
+        "sin-monedas":           "❌ No tienes suficientes monedas disponibles",
       };
       showMsg(msgs[err.message] || "❌ Error al actualizar la oferta", "error");
       if (!msgs[err.message]) console.error(err);
@@ -397,11 +434,11 @@ export default function MercadoPage() {
 
   // ── Acción: Aceptar oferta ──────────────────────────────────────────────────
   // Intercambio atómico + cascada:
-  //   1. Swap de cartas entre vendedor y ofertante
-  //   2. Incrementa intercambiosOfertaHoy del ofertante
-  //   3. Elimina esta venta
+  //   1. Swap de cartas + transferencia de monedas
+  //   2. Marca intercambioVentaHoy en vendedor + intercambiosOfertaHoy en ofertante
+  //   3. Elimina esta venta + TODAS las otras ventas del vendedor
   //   4. Cancela las otras ofertas activas del ofertante en otras ventas
-  //   5. Si el ofertante también vendía una carta que acaba de entregar y ya no le sobra → borra esa venta
+  //   5. Si el ofertante también vendía una carta que acaba de entregar → borra esa venta
   const aceptarOferta = async (oferta) => {
     try {
       await runTransaction(db, async (tx) => {
@@ -409,10 +446,10 @@ export default function MercadoPage() {
         const vendedorRef  = doc(db, "usuarios", user.uid);
         const compradorRef = doc(db, "usuarios", oferta.ofertanteId);
 
-        // Reads principales + otras ventas activas para la cascada
         const otrasVentasRefs = ventas
           .filter((v) => v.id !== ventaVerOfertas.id)
           .map((v) => doc(db, "ventas", v.id));
+
         const [ventaSnap, vendedorSnap, compradorSnap, ...otrasVentasSnaps] =
           await Promise.all([
             tx.get(ventaRef),
@@ -424,39 +461,46 @@ export default function MercadoPage() {
         if (!ventaSnap.exists()) throw new Error("venta-no-existe");
         if (!vendedorSnap.exists() || !compradorSnap.exists()) throw new Error("usuario-no-existe");
 
-        const ventaData   = ventaSnap.data();
-        const comprDatos  = compradorSnap.data();
+        const ventaData     = ventaSnap.data();
+        const comprDatos    = compradorSnap.data();
+        const vendDatosSnap = vendedorSnap.data();
 
         // Bloquear si el ofertante ya completó un intercambio hoy
         const freshIntercambios = comprDatos.fechaUltimaIntercambioOferta === HOY
           ? (comprDatos.intercambiosOfertaHoy || 0) : 0;
         if (freshIntercambios >= 1) throw new Error("ofertante-ya-intercambio");
 
-        const vendCromos  = vendedorSnap.data().cromos.map((c) => ({ ...c }));
+        const monedasOfertaAmount = oferta.monedas || 0;
+        const coinsComprador = comprDatos.monedas ?? 50;
+        const coinsVendedor  = vendDatosSnap.monedas ?? 50;
+        if (monedasOfertaAmount > 0 && coinsComprador < monedasOfertaAmount)
+          throw new Error("comprador-sin-monedas");
+
+        const vendCromos  = vendDatosSnap.cromos.map((c) => ({ ...c }));
         const comprCromos = comprDatos.cromos.map((c) => ({ ...c }));
 
         // Verificar stock del vendedor (≥2: 1 se queda + 1 entrega)
         const vendTiene = vendCromos.find((c) => c.cromoId === ventaData.cromoId);
         if (!vendTiene || vendTiene.cantidad < 2) throw new Error("vendedor-sin-carta");
 
-        // Verificar stock del ofertante para cada carta ofertada (≥2 de cada una)
-        for (const c of oferta.cromos) {
+        // Verificar stock del ofertante para cada carta ofertada
+        for (const c of (oferta.cromos || [])) {
           const comprTiene = comprCromos.find((x) => x.cromoId === c.cromoId);
           if (!comprTiene || comprTiene.cantidad < 2)
             throw new Error(`comprador-sin:${c.nombre}`);
         }
 
         // ── Ejecutar el intercambio ──────────────────────────────────────────
-        // Vendedor: entrega su carta, recibe las ofertadas
+        // Vendedor: entrega su carta, recibe las ofertadas, recibe las monedas
         vendTiene.cantidad -= 1;
-        oferta.cromos.forEach((c) => {
+        (oferta.cromos || []).forEach((c) => {
           const ex = vendCromos.find((x) => x.cromoId === c.cromoId);
           if (ex) ex.cantidad += 1;
           else vendCromos.push({ cromoId: c.cromoId, cantidad: 1, fechaObtenido: HOY, pegado: false });
         });
 
-        // Ofertante: entrega las cartas ofertadas, recibe la del vendedor
-        oferta.cromos.forEach((c) => {
+        // Ofertante: entrega las cartas ofertadas, entrega las monedas, recibe la carta del vendedor
+        (oferta.cromos || []).forEach((c) => {
           comprCromos.find((x) => x.cromoId === c.cromoId).cantidad -= 1;
         });
         const comprGana = comprCromos.find((x) => x.cromoId === ventaData.cromoId);
@@ -464,16 +508,21 @@ export default function MercadoPage() {
         else comprCromos.push({ cromoId: ventaData.cromoId, cantidad: 1, fechaObtenido: HOY, pegado: false });
 
         // ── Writes principales ───────────────────────────────────────────────
-        tx.update(vendedorRef, { cromos: vendCromos });
+        tx.update(vendedorRef, {
+          cromos:             vendCromos,
+          monedas:            coinsVendedor + monedasOfertaAmount,
+          intercambioVentaHoy: HOY,
+        });
         tx.update(compradorRef, {
-          cromos: comprCromos,
-          intercambiosOfertaHoy:       freshIntercambios + 1,
+          cromos:                       comprCromos,
+          monedas:                      coinsComprador - monedasOfertaAmount,
+          intercambiosOfertaHoy:        freshIntercambios + 1,
           fechaUltimaIntercambioOferta: HOY,
         });
         tx.delete(ventaRef);
 
         // ── Cascada sobre otras ventas ───────────────────────────────────────
-        const cardsGiven = new Set(oferta.cromos.map((c) => c.cromoId));
+        const cardsGiven = new Set((oferta.cromos || []).map((c) => c.cromoId));
 
         for (let i = 0; i < otrasVentasSnaps.length; i++) {
           const snap = otrasVentasSnaps[i];
@@ -481,17 +530,22 @@ export default function MercadoPage() {
           const data = snap.data();
           const ref  = otrasVentasRefs[i];
 
-          // Caso A: el ofertante es el vendedor de esta otra venta Y pone a la venta
-          // una carta que acaba de entregar y ya no le sobra → borrar la venta
+          // Caso A: el ofertante también vendía una carta que acaba de entregar → borrar
           if (data.vendedorId === oferta.ofertanteId && cardsGiven.has(data.cromoId)) {
             const cantidadTrasSwap = comprCromos.find((c) => c.cromoId === data.cromoId)?.cantidad ?? 0;
             if (cantidadTrasSwap < 2) {
               tx.delete(ref);
-              continue; // ya borrada, no tocar sus ofertas
+              continue;
             }
           }
 
-          // Caso B: el ofertante tenía una oferta en esta otra venta → cancelarla
+          // Caso B: el vendedor tiene otras ventas activas → eliminarlas (intercambio hecho)
+          if (data.vendedorId === user.uid) {
+            tx.delete(ref);
+            continue;
+          }
+
+          // Caso C: el ofertante tenía una oferta en esta otra venta → cancelarla
           const tieneOferta = (data.ofertas || []).some((o) => o.ofertanteId === oferta.ofertanteId);
           if (tieneOferta) {
             const ofertasFiltradas = (data.ofertas || []).filter((o) => o.ofertanteId !== oferta.ofertanteId);
@@ -500,10 +554,12 @@ export default function MercadoPage() {
         }
       });
 
+      const detalleCartas = (oferta.cromos || []).map((c) => c.nombre).join(", ");
+      const detalleMon    = oferta.monedas > 0 ? ` + ${oferta.monedas}🪙` : "";
       addFeedEvent({
         type:     "intercambio",
         userName: misDatos.nombre || misDatos.email,
-        details:  `🤝 Intercambió ${ventaVerOfertas.cromoNombre} con ${oferta.ofertanteNombre} a cambio de ${oferta.cromos.map((c) => c.nombre).join(", ")}`,
+        details:  `🤝 Intercambió ${ventaVerOfertas.cromoNombre} con ${oferta.ofertanteNombre} a cambio de ${detalleCartas || "monedas"}${detalleMon}`,
       });
 
       setVentaVerOfertas(null);
@@ -518,6 +574,7 @@ export default function MercadoPage() {
           "venta-no-existe":          "❌ Esta venta ya no existe",
           "usuario-no-existe":        "❌ Usuario no encontrado",
           "vendedor-sin-carta":       "❌ Ya no tienes esa carta de sobra",
+          "comprador-sin-monedas":    `❌ ${oferta.ofertanteNombre} ya no tiene esas monedas`,
           "ofertante-ya-intercambio": `❌ ${oferta.ofertanteNombre} ya completó un intercambio hoy`,
         };
         showMsg(msgs[err.message] || "❌ Error al aceptar la oferta", "error");
@@ -527,7 +584,6 @@ export default function MercadoPage() {
   };
 
   // ── Acción: Retirar venta propia ────────────────────────────────────────────
-  // El slot del día queda consumido igualmente.
   const retirarVenta = async (ventaId) => {
     try {
       await deleteDoc(doc(db, "ventas", ventaId));
@@ -537,13 +593,12 @@ export default function MercadoPage() {
   };
 
   // ── Acción: Cancelar mi oferta ──────────────────────────────────────────────
-  // El slot del día queda consumido igualmente.
   const cancelarMiOferta = async (venta) => {
     try {
       await runTransaction(db, async (tx) => {
         const ventaRef  = doc(db, "ventas", venta.id);
         const ventaSnap = await tx.get(ventaRef);
-        if (!ventaSnap.exists()) return; // ya no existe, está bien
+        if (!ventaSnap.exists()) return;
         const ofertasFiltradas = (ventaSnap.data().ofertas || []).filter(
           (o) => o.ofertanteId !== user.uid
         );
@@ -554,14 +609,14 @@ export default function MercadoPage() {
     } catch (err) { showMsg("❌ Error al cancelar", "error"); }
   };
 
-  // ── Acción: Ver ofertas recibidas (refresca desde Firestore) ────────────────
+  // ── Acción: Ver ofertas recibidas ────────────────────────────────────────────
   const verOfertas = async (venta) => {
     try {
       const snap = await getDoc(doc(db, "ventas", venta.id));
       if (snap.exists()) setVentaVerOfertas({ id: snap.id, ...snap.data() });
       else { showMsg("Esta venta ya no existe"); await loadData(user.uid); }
     } catch (err) {
-      setVentaVerOfertas(venta); // fallback a datos cacheados
+      setVentaVerOfertas(venta);
     }
   };
 
@@ -581,23 +636,29 @@ export default function MercadoPage() {
             background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: "0.85rem",
           }}>← Álbum</button>
 
-          {/* Pills de estado de los dos slots */}
+          {/* Pills de estado */}
           <div style={{ display: "flex", gap: "6px" }}>
             <span style={{
               fontSize: "0.68rem", fontWeight: "bold", padding: "3px 9px", borderRadius: "6px",
-              background: yaVendiHoy ? "rgba(239,68,68,0.15)" : "rgba(16,185,129,0.15)",
-              color:      yaVendiHoy ? "#ef4444"              : "#10b981",
+              background: !puedeVender ? "rgba(239,68,68,0.15)" : "rgba(16,185,129,0.15)",
+              color:      !puedeVender ? "#ef4444"              : "#10b981",
             }}>
-              🏷️ {yaVendiHoy ? "Venta usada" : "1 venta libre"}
+              🏷️ {intercambioVentaHoyFlag
+                ? "Intercambio hecho"
+                : ventasRestantes === 0
+                  ? "Ventas agotadas"
+                  : `${ventasRestantes} venta${ventasRestantes !== 1 ? "s" : ""} libre${ventasRestantes !== 1 ? "s" : ""}`}
             </span>
             <span style={{
               fontSize: "0.68rem", fontWeight: "bold", padding: "3px 9px", borderRadius: "6px",
               background: !puedeHacerOferta ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
               color:      !puedeHacerOferta ? "#ef4444"               : "#f59e0b",
             }}>
-              💰 {!puedeHacerOferta
-                ? (intercambiosOfertaHoyCount >= 1 ? "Intercambio hecho" : "Ofertas agotadas")
-                : `${ofertasRestantes} oferta${ofertasRestantes !== 1 ? "s" : ""} libre${ofertasRestantes !== 1 ? "s" : ""}`}
+              💰 {intercambiosOfertaHoyCount >= 1
+                ? "Intercambio hecho"
+                : ofertasRestantes === 0
+                  ? "Ofertas agotadas"
+                  : `${ofertasRestantes} oferta${ofertasRestantes !== 1 ? "s" : ""} libre${ofertasRestantes !== 1 ? "s" : ""}`}
             </span>
           </div>
         </div>
@@ -612,7 +673,7 @@ export default function MercadoPage() {
           ].map((t) => (
             <button key={t.id} onClick={() => {
               setTab(t.id);
-              setVentaSeleccionada(null); setCromosOferta([]); setVentaVerOfertas(null);
+              setVentaSeleccionada(null); setCromosOferta([]); setMonedasOferta(0); setVentaVerOfertas(null);
             }} style={{
               flex:       t.id === "historial" ? "none" : 1,
               padding:    "8px 10px", borderRadius: "10px", border: "none",
@@ -636,7 +697,7 @@ export default function MercadoPage() {
 
       <div style={{ padding: "15px" }}>
 
-        {/* Skeleton de carga */}
+        {/* Skeleton */}
         {!dataLoaded && (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {[1, 2, 3].map((i) => (
@@ -671,21 +732,17 @@ export default function MercadoPage() {
 
                 return (
                   <div key={venta.id} style={{
-                    background:    esMia ? "#1e3a5f" : "#1e293b",
-                    borderRadius:  "16px", padding: "15px", marginBottom: "10px",
+                    background:   esMia ? "#1e3a5f" : "#1e293b",
+                    borderRadius: "16px", padding: "15px", marginBottom: "10px",
                     border: esMia ? "1px solid #3b82f6" : "1px solid #334155",
                   }}>
-                    {/* Cabecera de la carta */}
                     <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "10px" }}>
                       <img src={venta.cromoImagen} alt="" style={{
                         width: "60px", height: "60px", borderRadius: "10px",
-                        objectFit: "cover", border: `2px solid ${getBorder(venta.cromoRareza)}`,
-                        flexShrink: 0,
+                        objectFit: "cover", border: `2px solid ${getBorder(venta.cromoRareza)}`, flexShrink: 0,
                       }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontWeight: "bold", fontSize: "0.9rem" }}>
-                          {venta.cromoNombre}
-                        </p>
+                        <p style={{ margin: 0, fontWeight: "bold", fontSize: "0.9rem" }}>{venta.cromoNombre}</p>
                         <p style={{ margin: "2px 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>
                           {getRarezaEmoji(venta.cromoRareza)} de {venta.vendedorNombre}
                         </p>
@@ -710,7 +767,6 @@ export default function MercadoPage() {
                       </div>
                     </div>
 
-                    {/* Botones según rol */}
                     {esMia ? (
                       <div style={{ display: "flex", gap: "8px" }}>
                         <button onClick={() => verOfertas(venta)} style={{
@@ -743,17 +799,17 @@ export default function MercadoPage() {
                               : "❌ Ya has agotado tus 3 ofertas de hoy", "error");
                             return;
                           }
-                          setVentaSeleccionada(venta); setCromosOferta([]);
+                          setVentaSeleccionada(venta); setCromosOferta([]); setMonedasOferta(0);
                         }}
                         style={{
                           width: "100%", padding: "10px", borderRadius: "10px", border: "none",
                           background: !puedeHacerOferta
                             ? "#334155"
                             : "linear-gradient(135deg, #f59e0b, #d97706)",
-                          color:  !puedeHacerOferta ? "#64748b" : "#000",
+                          color:      !puedeHacerOferta ? "#64748b" : "#000",
                           fontWeight: "bold",
-                          cursor: !puedeHacerOferta ? "not-allowed" : "pointer",
-                          fontSize: "0.85rem",
+                          cursor:     !puedeHacerOferta ? "not-allowed" : "pointer",
+                          fontSize:   "0.85rem",
                         }}
                       >
                         {!puedeHacerOferta
@@ -769,12 +825,12 @@ export default function MercadoPage() {
         )}
 
         {/* ════════════════════════════════════════
-            OVERLAY: HACER OFERTA
+            OVERLAY: HACER / EDITAR OFERTA
         ════════════════════════════════════════ */}
         {dataLoaded && tab === "mercado" && ventaSeleccionada && (
           <div>
             <button onClick={() => {
-              setVentaSeleccionada(null); setCromosOferta([]); setEstaEditando(false);
+              setVentaSeleccionada(null); setCromosOferta([]); setMonedasOferta(0); setEstaEditando(false);
               if (estaEditando) setTab("mis-ofertas");
             }} style={{
               padding: "6px 14px", borderRadius: "8px", border: "1px solid #475569",
@@ -799,56 +855,93 @@ export default function MercadoPage() {
                 {ventaSeleccionada.cromoNombre}
               </p>
               <p style={{ fontSize: "0.75rem", color: "#94a3b8", marginTop: "4px" }}>
-                Mínimo: {MINIMOS[ventaSeleccionada.cromoRareza].map((m) => m.label).join(" · ")}
+                Mínimo con cartas: {MINIMOS[ventaSeleccionada.cromoRareza].map((m) => m.label).join(" · ")}
               </p>
             </div>
 
-            {/* Grid de repetidos disponibles */}
+            {/* ── Monedas ── */}
+            <div style={{
+              background: "#1e293b", borderRadius: "14px", padding: "14px",
+              marginBottom: "14px", border: "1px solid #334155",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                <p style={{ margin: 0, fontWeight: "bold", fontSize: "0.9rem" }}>🪙 Añadir monedas</p>
+                <span style={{ fontSize: "0.72rem", color: "#64748b" }}>
+                  Disponibles: <strong style={{ color: "#fbbf24" }}>{monedasDisponibles}🪙</strong>
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <button
+                  onClick={() => setMonedasOferta((p) => Math.max(0, p - 5))}
+                  style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #475569", background: "#0f172a", color: "white", cursor: "pointer", fontSize: "1rem", flexShrink: 0 }}
+                >−</button>
+                <div style={{ flex: 1, position: "relative" }}>
+                  <input
+                    type="number" min="0" max={monedasDisponibles}
+                    value={monedasOferta}
+                    onChange={(e) => {
+                      const v = Math.max(0, Math.min(monedasDisponibles, parseInt(e.target.value) || 0));
+                      setMonedasOferta(v);
+                    }}
+                    style={{
+                      width: "100%", padding: "8px 36px 8px 12px", borderRadius: "10px",
+                      border: "1px solid #475569", background: "#0f172a", color: "white",
+                      fontSize: "1rem", fontWeight: "bold", textAlign: "center",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <span style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)", fontSize: "0.9rem" }}>🪙</span>
+                </div>
+                <button
+                  onClick={() => setMonedasOferta((p) => Math.min(monedasDisponibles, p + 5))}
+                  style={{ width: "36px", height: "36px", borderRadius: "50%", border: "1px solid #475569", background: "#0f172a", color: "white", cursor: "pointer", fontSize: "1rem", flexShrink: 0 }}
+                >+</button>
+              </div>
+              {monedasOferta > 0 && (
+                <p style={{ margin: "8px 0 0", fontSize: "0.72rem", color: "#fbbf24", textAlign: "center" }}>
+                  {monedasOferta}🪙 quedarán reservadas hasta que resuelva la oferta
+                </p>
+              )}
+            </div>
+
+            {/* Grid de repetidos */}
             <p style={{ fontSize: "0.9rem", fontWeight: "bold", marginBottom: "4px" }}>
-              Elige cartas para ofrecer:
+              Elige cartas para ofrecer: <span style={{ fontSize: "0.75rem", fontWeight: "normal", color: "#64748b" }}>(opcional si incluyes monedas)</span>
             </p>
             <p style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "12px" }}>
               Solo tus cartas repetidas · puedes superar el mínimo
             </p>
 
-            {getMisRepetidos().length === 0 ? (
+            {getMisRepetidos().length === 0 && monedasOferta === 0 ? (
               <p style={{ color: "#64748b", textAlign: "center", padding: "20px" }}>
-                No tienes cartas repetidas disponibles
+                No tienes cartas repetidas disponibles. Añade monedas para ofertar.
               </p>
             ) : vendedorCargando ? (
               <div style={{ textAlign: "center", padding: "20px", color: "#64748b", fontSize: "0.85rem" }}>
                 Cargando inventario del vendedor…
               </div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "20px" }}>
+            ) : getMisRepetidos().length > 0 ? (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "16px" }}>
                 {getMisRepetidos().map((cromo) => {
                   const sel = cromosOferta.includes(cromo.cromoId);
-
-                  // ¿Qué cantidad tiene el vendedor de esta carta?
                   const vendCantidad = vendedorCromos
                     ? (vendedorCromos.find((c) => c.cromoId === cromo.cromoId)?.cantidad || 0)
                     : null;
-
-                  // Badge: solo visible si tenemos los datos del vendedor
                   const badge = vendedorCromos === null ? null
                     : vendCantidad === 0
                       ? { label: "✨ Le interesa", bg: "#065f46", color: "#6ee7b7" }
                       : vendCantidad === 1
                         ? { label: "Ya la tiene",  bg: "#1e293b", color: "#64748b" }
                         : { label: "Le sobra",      bg: "#451a03", color: "#fcd34d" };
-
                   return (
                     <div key={cromo.cromoId} onClick={() => toggleOferta(cromo.cromoId)} style={{
-                      borderRadius: "12px", overflow: "hidden", cursor: "pointer",
-                      position: "relative",
-                      border:     sel ? "3px solid #10b981" : `2px solid ${getBorder(cromo.info.rareza)}`,
-                      opacity:    sel ? 1 : (vendCantidad > 0 ? 0.55 : 0.85),
-                      transform:  sel ? "scale(1.05)" : "scale(1)",
+                      borderRadius: "12px", overflow: "hidden", cursor: "pointer", position: "relative",
+                      border:    sel ? "3px solid #10b981" : `2px solid ${getBorder(cromo.info.rareza)}`,
+                      opacity:   sel ? 1 : (vendCantidad > 0 ? 0.55 : 0.85),
+                      transform: sel ? "scale(1.05)" : "scale(1)",
                       transition: "all 0.2s",
                     }}>
                       <img src={cromo.info.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }} />
-
-                      {/* Badge "Le interesa / Ya la tiene / Le sobra" */}
                       {badge && !sel && (
                         <div style={{
                           position: "absolute", top: "4px", left: "4px", right: "4px",
@@ -856,17 +949,12 @@ export default function MercadoPage() {
                           fontSize: "0.48rem", fontWeight: "bold",
                           padding: "2px 4px", borderRadius: "4px",
                           textAlign: "center", letterSpacing: "0.3px",
-                        }}>
-                          {badge.label}
-                        </div>
+                        }}>{badge.label}</div>
                       )}
-
                       {sel && (
                         <div style={{
-                          position: "absolute", inset: 0,
-                          background: "rgba(16,185,129,0.2)",
-                          display: "flex", justifyContent: "center", alignItems: "center",
-                          fontSize: "1.5rem",
+                          position: "absolute", inset: 0, background: "rgba(16,185,129,0.2)",
+                          display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.5rem",
                         }}>✅</div>
                       )}
                       <div style={{ padding: "3px", textAlign: "center", background: "rgba(0,0,0,0.65)", fontSize: "0.5rem" }}>
@@ -876,41 +964,40 @@ export default function MercadoPage() {
                   );
                 })}
               </div>
-            )}
+            ) : null}
 
             {/* Resumen */}
-            {cromosOferta.length > 0 && (
-              <div style={{
-                background: "#1e293b", borderRadius: "12px", padding: "12px",
-                marginBottom: "15px", textAlign: "center",
+            <div style={{
+              background: "#1e293b", borderRadius: "12px", padding: "12px",
+              marginBottom: "15px", textAlign: "center",
+            }}>
+              <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "4px" }}>
+                Tu oferta: {cromosOferta.length > 0 ? `${cromosOferta.length} carta${cromosOferta.length !== 1 ? "s" : ""}` : "sin cartas"}
+                {monedasOferta > 0 && ` + ${monedasOferta}🪙`}
+              </p>
+              <p style={{
+                fontSize: "0.78rem",
+                color: ofertaEsValida(ventaSeleccionada.cromoRareza, cromosOferta, monedasOferta) ? "#10b981" : "#ef4444",
               }}>
-                <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "4px" }}>
-                  Tu oferta: {cromosOferta.length} carta{cromosOferta.length !== 1 ? "s" : ""}
-                </p>
-                <p style={{
-                  fontSize: "0.78rem",
-                  color: cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta) ? "#10b981" : "#ef4444",
-                }}>
-                  {cumpleMinimo(ventaSeleccionada.cromoRareza, cromosOferta)
-                    ? "✅ Cumple el mínimo"
-                    : "❌ No cumple el mínimo aún"}
-                </p>
-              </div>
-            )}
+                {ofertaEsValida(ventaSeleccionada.cromoRareza, cromosOferta, monedasOferta)
+                  ? "✅ Oferta válida"
+                  : "❌ Añade cartas (mínimo) o monedas para poder enviar"}
+              </p>
+            </div>
 
             <button
               onClick={estaEditando ? guardarEdicionOferta : hacerOferta}
-              disabled={!cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta)}
+              disabled={!ofertaEsValida(ventaSeleccionada?.cromoRareza, cromosOferta, monedasOferta)}
               style={{
                 width: "100%", padding: "15px", borderRadius: "14px", border: "none",
-                background: cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta)
+                background: ofertaEsValida(ventaSeleccionada?.cromoRareza, cromosOferta, monedasOferta)
                   ? estaEditando
                     ? "linear-gradient(135deg, #3b82f6, #2563eb)"
                     : "linear-gradient(135deg, #10b981, #059669)"
                   : "#334155",
-                color:  cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta) ? "white" : "#64748b",
+                color:  ofertaEsValida(ventaSeleccionada?.cromoRareza, cromosOferta, monedasOferta) ? "white" : "#64748b",
                 fontSize: "1rem", fontWeight: "bold",
-                cursor: cumpleMinimo(ventaSeleccionada?.cromoRareza, cromosOferta) ? "pointer" : "not-allowed",
+                cursor: ofertaEsValida(ventaSeleccionada?.cromoRareza, cromosOferta, monedasOferta) ? "pointer" : "not-allowed",
               }}
             >
               {estaEditando ? "💾 Guardar cambios" : "📤 Enviar oferta"}
@@ -923,75 +1010,91 @@ export default function MercadoPage() {
         ════════════════════════════════════════ */}
         {dataLoaded && tab === "vender" && (
           <div>
-            <h2 style={{ fontSize: "1.1rem", marginBottom: "5px" }}>📦 Poner una carta a la venta</h2>
-            <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: "20px" }}>
-              Disponible 24h. Si nadie hace oferta, caduca.
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "5px" }}>
+              <h2 style={{ fontSize: "1.1rem", margin: 0 }}>📦 Poner cartas a la venta</h2>
+              <span style={{ fontSize: "0.75rem", color: puedeVender ? "#10b981" : "#64748b" }}>
+                {intercambioVentaHoyFlag ? "Intercambio hecho hoy" : `${ventasRestantes}/3 disponibles`}
+              </span>
+            </div>
+            <p style={{ fontSize: "0.8rem", color: "#64748b", marginBottom: "16px" }}>
+              Hasta 3 cartas/día · 24h de vida · Al aceptar una oferta, las demás se retiran
             </p>
 
-            {yaVendiHoy ? (
-              /* Slot ya usado hoy */
+            {/* Ventas activas propias */}
+            {misVentas.length > 0 && (
+              <div style={{ marginBottom: "16px" }}>
+                {misVentas.map((v) => (
+                  <div key={v.id} style={{
+                    display: "flex", alignItems: "center", gap: "10px",
+                    background: "#1e3a5f", borderRadius: "12px", padding: "10px 12px",
+                    border: "1px solid #3b82f6", marginBottom: "8px",
+                  }}>
+                    <img src={v.cromoImagen} alt="" style={{
+                      width: "44px", height: "44px", borderRadius: "8px",
+                      objectFit: "cover", border: `2px solid ${getBorder(v.cromoRareza)}`, flexShrink: 0,
+                    }} />
+                    <div style={{ flex: 1 }}>
+                      <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: "bold" }}>{v.cromoNombre}</p>
+                      <p style={{ margin: "2px 0 0", fontSize: "0.7rem", color: "#94a3b8" }}>
+                        🔥 {(v.ofertas || []).length} oferta{(v.ofertas || []).length !== 1 ? "s" : ""}
+                        {" · "}⏰ {horasRestantes(v.fechaExpiracion)}h
+                      </p>
+                    </div>
+                    <button onClick={() => verOfertas(v)} style={{
+                      padding: "6px 10px", borderRadius: "8px", border: "none",
+                      background: (v.ofertas || []).length > 0 ? "#10b981" : "#334155",
+                      color: "white", cursor: "pointer", fontSize: "0.72rem", fontWeight: "bold",
+                    }}>
+                      {(v.ofertas || []).length > 0 ? `📥 ${(v.ofertas || []).length}` : "📥"}
+                    </button>
+                    <button onClick={() => retirarVenta(v.id)} style={{
+                      padding: "6px 10px", borderRadius: "8px",
+                      border: "1px solid #475569", background: "transparent",
+                      color: "#64748b", cursor: "pointer", fontSize: "0.75rem",
+                    }}>🗑️</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Bloqueo */}
+            {!puedeVender ? (
               <div style={{ textAlign: "center", padding: "20px 0", color: "#64748b" }}>
                 <p style={{ fontSize: "2rem", marginBottom: "10px" }}>🔒</p>
-                <p style={{ marginBottom: "16px" }}>Ya has puesto una carta a la venta hoy</p>
-                {misVentas.length > 0 && (
-                  <div style={{
-                    background: "#1e293b", borderRadius: "14px", padding: "14px",
-                    border: "1px solid #334155", maxWidth: "320px", margin: "0 auto",
-                  }}>
-                    <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "12px" }}>
-                      Tu carta en venta:
-                    </p>
-                    {misVentas.map((v) => (
-                      <div key={v.id} style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <img src={v.cromoImagen} alt="" style={{
-                          width: "48px", height: "48px", borderRadius: "8px",
-                          objectFit: "cover", border: `2px solid ${getBorder(v.cromoRareza)}`,
-                        }} />
-                        <div style={{ flex: 1, textAlign: "left" }}>
-                          <p style={{ margin: 0, fontSize: "0.85rem", fontWeight: "bold" }}>{v.cromoNombre}</p>
-                          <p style={{ margin: "2px 0 0", fontSize: "0.7rem", color: "#94a3b8" }}>
-                            🔥 {(v.ofertas || []).length} oferta{(v.ofertas || []).length !== 1 ? "s" : ""}
-                            {" · "}⏰ {horasRestantes(v.fechaExpiracion)}h
-                          </p>
-                        </div>
-                        <button onClick={() => retirarVenta(v.id)} style={{
-                          padding: "6px 10px", borderRadius: "8px",
-                          border: "1px solid #475569", background: "transparent",
-                          color: "#64748b", cursor: "pointer", fontSize: "0.75rem",
-                        }}>🗑️</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <p>{intercambioVentaHoyFlag
+                  ? "Ya completaste un intercambio hoy como vendedor"
+                  : "Ya has usado tus 3 slots de venta de hoy"}</p>
               </div>
             ) : getMisRepetidos().length === 0 ? (
-              <div style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
+              <div style={{ textAlign: "center", padding: "20px", color: "#64748b" }}>
                 <p style={{ fontSize: "2rem", marginBottom: "10px" }}>📦</p>
                 <p>No tienes cartas repetidas para vender</p>
               </div>
             ) : (
               <>
+                <p style={{ fontSize: "0.85rem", color: "#94a3b8", marginBottom: "12px" }}>
+                  Elige una carta para poner a la venta:
+                </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "20px" }}>
                   {getMisRepetidos().map((cromo) => {
                     const sel = cromoAVender === cromo.cromoId;
+                    const yaEnVenta = misVentas.some((v) => v.cromoId === cromo.cromoId);
+                    if (yaEnVenta) return null;
                     return (
                       <div key={cromo.cromoId}
                         onClick={() => setCromoAVender(sel ? null : cromo.cromoId)}
                         style={{
-                          borderRadius: "12px", overflow: "hidden", cursor: "pointer",
-                          position: "relative",
-                          border:     sel ? "3px solid #f59e0b" : `2px solid ${getBorder(cromo.info.rareza)}`,
-                          transform:  sel ? "scale(1.05)" : "scale(1)",
+                          borderRadius: "12px", overflow: "hidden", cursor: "pointer", position: "relative",
+                          border:    sel ? "3px solid #f59e0b" : `2px solid ${getBorder(cromo.info.rareza)}`,
+                          transform: sel ? "scale(1.05)" : "scale(1)",
                           transition: "all 0.2s",
                         }}
                       >
                         <img src={cromo.info.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover" }} />
                         {sel && (
                           <div style={{
-                            position: "absolute", inset: 0,
-                            background: "rgba(245,158,11,0.2)",
-                            display: "flex", justifyContent: "center", alignItems: "center",
-                            fontSize: "1.5rem",
+                            position: "absolute", inset: 0, background: "rgba(245,158,11,0.2)",
+                            display: "flex", justifyContent: "center", alignItems: "center", fontSize: "1.5rem",
                           }}>🏷️</div>
                         )}
                         <div style={{ padding: "3px", textAlign: "center", background: "rgba(0,0,0,0.65)", fontSize: "0.5rem" }}>
@@ -1029,7 +1132,6 @@ export default function MercadoPage() {
 
           return (
             <div>
-              {/* Ofertas enviadas */}
               <h2 style={{ fontSize: "1.1rem", marginBottom: "15px" }}>
                 💰 Mis ofertas activas{misOfertas.length > 0 && ` (${misOfertas.length})`}
                 <span style={{ fontSize: "0.7rem", color: "#64748b", fontWeight: "normal", marginLeft: "8px" }}>
@@ -1046,15 +1148,11 @@ export default function MercadoPage() {
                         ? "Tus ofertas están pendientes o caducaron"
                         : "No has hecho ninguna oferta hoy"}
                   </p>
-                  {!puedeHacerOferta
-                    ? null
-                    : <p style={{ fontSize: "0.8rem", marginTop: "4px" }}>Ve al Mercado para ofertar</p>}
                 </div>
               ) : (
                 misOfertas.map(({ venta, oferta }) => (
                   <div key={venta.id} style={{
-                    background: "#1e293b", borderRadius: "16px",
-                    padding: "15px", marginBottom: "12px",
+                    background: "#1e293b", borderRadius: "16px", padding: "15px", marginBottom: "12px",
                   }}>
                     <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "10px" }}>
                       <img src={venta.cromoImagen} alt="" style={{
@@ -1075,14 +1173,18 @@ export default function MercadoPage() {
                       }}>⏳ Pendiente</span>
                     </div>
                     <p style={{ fontSize: "0.75rem", color: "#94a3b8", marginBottom: "10px" }}>
-                      Ofreces: {oferta.cromos.map((c) => c.nombre).join(", ")}
+                      Ofreces:{" "}
+                      {(oferta.cromos || []).length > 0
+                        ? oferta.cromos.map((c) => c.nombre).join(", ")
+                        : "solo monedas"}
+                      {oferta.monedas > 0 && ` + ${oferta.monedas}🪙`}
                     </p>
                     <div style={{ display: "flex", gap: "8px" }}>
                       <button
                         onClick={() => {
-                          // Abrir el overlay de oferta en modo edición con las cartas ya seleccionadas
                           setVentaSeleccionada(venta);
                           setCromosOferta(oferta.cromos.map((c) => c.cromoId));
+                          setMonedasOferta(oferta.monedas || 0);
                           setEstaEditando(true);
                           setTab("mercado");
                         }}
@@ -1102,11 +1204,11 @@ export default function MercadoPage() {
                 ))
               )}
 
-              {/* Mi carta en venta */}
+              {/* Mis ventas activas */}
               {misVentas.length > 0 && (
                 <>
                   <h2 style={{ fontSize: "1.1rem", marginTop: "10px", marginBottom: "15px" }}>
-                    🏷️ Mi carta en venta
+                    🏷️ Mis cartas en venta
                   </h2>
                   {misVentas.map((venta) => {
                     const num = (venta.ofertas || []).length;
@@ -1194,10 +1296,8 @@ export default function MercadoPage() {
         ════════════════════════════════════════ */}
         {ventaVerOfertas && (
           <div style={{
-            position: "fixed", inset: 0,
-            background: "rgba(0,0,0,0.87)", zIndex: 100,
-            display: "flex", flexDirection: "column",
-            padding: "20px", overflowY: "auto",
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.87)", zIndex: 100,
+            display: "flex", flexDirection: "column", padding: "20px", overflowY: "auto",
             animation: "fadeInUp 0.3s",
           }}>
             <button onClick={() => setVentaVerOfertas(null)} style={{
@@ -1206,7 +1306,6 @@ export default function MercadoPage() {
               alignSelf: "flex-start", marginBottom: "15px",
             }}>← Cerrar</button>
 
-            {/* Carta en venta */}
             <div style={{ textAlign: "center", marginBottom: "20px" }}>
               <img src={ventaVerOfertas.cromoImagen} alt="" style={{
                 width: "70px", height: "70px", borderRadius: "12px", objectFit: "cover",
@@ -1223,39 +1322,63 @@ export default function MercadoPage() {
             ) : (
               (ventaVerOfertas.ofertas || []).map((oferta, i) => (
                 <div key={i} style={{
-                  background: "#1e293b", borderRadius: "16px",
-                  padding: "15px", marginBottom: "12px",
+                  background: "#1e293b", borderRadius: "16px", padding: "15px", marginBottom: "12px",
                 }}>
                   <p style={{ fontWeight: "bold", fontSize: "0.9rem", marginBottom: "10px" }}>
                     {oferta.ofertanteNombre} ofrece:
                   </p>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "12px" }}>
-                    {oferta.cromos.map((c, j) => {
-                      const esNueva = !tieneCromo(c.cromoId);
-                      return (
-                        <div key={j} style={{
-                          position: "relative", borderRadius: "10px",
-                          border: `2px solid ${getBorder(c.rareza)}`, overflow: "visible",
-                        }}>
-                          <div style={{ borderRadius: "8px 8px 0 0", overflow: "hidden" }}>
-                            <img src={c.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
-                          </div>
-                          <div style={{ padding: "3px 4px", textAlign: "center", fontSize: "0.55rem", color: "#cbd5e1", lineHeight: 1.2 }}>
-                            {c.nombre}
-                          </div>
-                          <div style={{
-                            position: "absolute", top: "-8px", right: "-4px",
-                            background: esNueva ? "#10b981" : "#475569",
-                            color: "white", fontSize: "0.45rem", fontWeight: "bold",
-                            padding: "2px 5px", borderRadius: "4px",
-                            boxShadow: "0 1px 4px rgba(0,0,0,0.6)", whiteSpace: "nowrap",
+
+                  {/* Monedas */}
+                  {oferta.monedas > 0 && (
+                    <div style={{
+                      background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)",
+                      borderRadius: "10px", padding: "8px 14px", marginBottom: "10px",
+                      display: "flex", alignItems: "center", gap: "8px",
+                    }}>
+                      <span style={{ fontSize: "1.3rem" }}>🪙</span>
+                      <span style={{ fontWeight: "bold", color: "#fbbf24", fontSize: "1rem" }}>
+                        {oferta.monedas} monedas
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Cartas */}
+                  {(oferta.cromos || []).length > 0 && (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "12px" }}>
+                      {oferta.cromos.map((c, j) => {
+                        const esNueva = !tieneCromo(c.cromoId);
+                        return (
+                          <div key={j} style={{
+                            position: "relative", borderRadius: "10px",
+                            border: `2px solid ${getBorder(c.rareza)}`, overflow: "visible",
                           }}>
-                            {esNueva ? "✨ NUEVA" : "REPETIDA"}
+                            <div style={{ borderRadius: "8px 8px 0 0", overflow: "hidden" }}>
+                              <img src={c.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", display: "block" }} />
+                            </div>
+                            <div style={{ padding: "3px 4px", textAlign: "center", fontSize: "0.55rem", color: "#cbd5e1", lineHeight: 1.2 }}>
+                              {c.nombre}
+                            </div>
+                            <div style={{
+                              position: "absolute", top: "-8px", right: "-4px",
+                              background: esNueva ? "#10b981" : "#475569",
+                              color: "white", fontSize: "0.45rem", fontWeight: "bold",
+                              padding: "2px 5px", borderRadius: "4px",
+                              boxShadow: "0 1px 4px rgba(0,0,0,0.6)", whiteSpace: "nowrap",
+                            }}>
+                              {esNueva ? "✨ NUEVA" : "REPETIDA"}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(oferta.cromos || []).length === 0 && oferta.monedas > 0 && (
+                    <p style={{ fontSize: "0.75rem", color: "#64748b", marginBottom: "12px" }}>
+                      Solo monedas, sin cartas
+                    </p>
+                  )}
+
                   <button onClick={() => aceptarOferta(oferta)} style={{
                     width: "100%", padding: "12px", borderRadius: "10px", border: "none",
                     background: "linear-gradient(135deg, #10b981, #059669)",

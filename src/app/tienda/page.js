@@ -58,6 +58,8 @@ export default function TiendaPage() {
 
   // Cartas comprometidas en ofertas activas del mercado { cromoId: count }
   const [enOfertaMercado, setEnOfertaMercado] = useState({});
+  // Monedas comprometidas en ofertas activas del mercado
+  const [monedasEnOfertas, setMonedasEnOfertas] = useState(0);
 
   // Vender
   const [cantVenta, setCantVenta] = useState({});
@@ -123,10 +125,11 @@ export default function TiendaPage() {
           setComprasHoy(d.fechaUltimaCompra === HOY ? (d.comprasHoy || 0) : 0);
           setMisDatos(d);
         }
-        // Cartas comprometidas en ofertas activas del mercado
+        // Cartas y monedas comprometidas en ofertas activas del mercado
         try {
           const ventasSnap = await getDocs(collection(db, "ventas"));
           const ofertaCount = {};
+          let monedasReservadas = 0;
           ventasSnap.forEach((v) => {
             const vd = v.data();
             (vd.ofertas || [])
@@ -135,9 +138,11 @@ export default function TiendaPage() {
                 (o.cromos || []).forEach((c) => {
                   ofertaCount[c.cromoId] = (ofertaCount[c.cromoId] || 0) + 1;
                 });
+                monedasReservadas += (o.monedas || 0);
               });
           });
           setEnOfertaMercado(ofertaCount);
+          setMonedasEnOfertas(monedasReservadas);
         } catch (err) { console.error("Error cargando ofertas mercado:", err); }
       } catch (err) { console.error(err); }
       setLoading(false);
@@ -229,7 +234,8 @@ export default function TiendaPage() {
         // Verificar monedas y límite de compras
         const coinsActuales = d.monedas ?? 50;
         const comprasActuales = d.fechaUltimaCompra === HOY ? (d.comprasHoy || 0) : 0;
-        if (coinsActuales < item.precio) throw new Error("sin-monedas");
+        // Descontamos las monedas reservadas en ofertas activas del mercado
+        if (coinsActuales - monedasEnOfertas < item.precio) throw new Error("sin-monedas");
         if (comprasActuales >= MAX_COMPRAS) throw new Error("limite");
 
         const nuevasMonedas = coinsActuales - item.precio;
@@ -479,6 +485,9 @@ export default function TiendaPage() {
     })
     .sort((a, b) => (RAREZA_ORDER[b.rareza] || 0) - (RAREZA_ORDER[a.rareza] || 0));
 
+  // Monedas realmente disponibles (descontando las reservadas en ofertas del mercado)
+  const monedasDisponibles = Math.max(0, monedas - monedasEnOfertas);
+
   if (loading) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#0f172a" }}>
@@ -547,8 +556,13 @@ export default function TiendaPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <button onClick={() => router.push("/album")} style={{ padding: "8px 14px", borderRadius: "10px", border: "1px solid #475569", background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: "0.85rem" }}>← Álbum</button>
           <h1 style={{ margin: 0, fontSize: "1.1rem", fontWeight: "bold" }}>🏪 Tienda</h1>
-          <div style={{ background: "#0f172a", borderRadius: "10px", padding: "6px 12px", border: "1px solid #334155" }}>
-            <span style={{ color: "#fbbf24", fontWeight: "bold", fontSize: "0.9rem" }}>{monedas}🪙</span>
+          <div style={{ background: "#0f172a", borderRadius: "10px", padding: "6px 12px", border: "1px solid #334155", textAlign: "right" }}>
+            <span style={{ color: "#fbbf24", fontWeight: "bold", fontSize: "0.9rem" }}>{monedasDisponibles}🪙</span>
+            {monedasEnOfertas > 0 && (
+              <div style={{ fontSize: "0.65rem", color: "#94a3b8", marginTop: "1px" }}>
+                🔒{monedasEnOfertas} en ofertas
+              </div>
+            )}
           </div>
         </div>
         {/* Compras restantes */}
@@ -671,12 +685,19 @@ export default function TiendaPage() {
                 {error && <p style={{ color: "#f87171", textAlign: "center", fontSize: "0.85rem", marginBottom: "12px" }}>{error}</p>}
                 <div style={{ background: "#0f172a", borderRadius: "12px", padding: "14px", textAlign: "center", marginBottom: "20px" }}>
                   <p style={{ margin: 0, fontSize: "1.2rem", fontWeight: "bold", color: "#fbbf24" }}>{itemActual.precio}🪙</p>
-                  <p style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "#64748b" }}>Tendrás: {monedas - itemActual.precio}🪙</p>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.75rem", color: "#64748b" }}>
+                    Disponibles: {monedasDisponibles}🪙 → Tendrás: {monedasDisponibles - itemActual.precio}🪙
+                  </p>
+                  {monedasEnOfertas > 0 && (
+                    <p style={{ margin: "2px 0 0", fontSize: "0.7rem", color: "#94a3b8" }}>
+                      (🔒{monedasEnOfertas}🪙 reservadas en ofertas del mercado)
+                    </p>
+                  )}
                 </div>
-                {monedas < itemActual.precio && <p style={{ color: "#f87171", textAlign: "center", fontSize: "0.85rem" }}>No tienes suficientes monedas.</p>}
+                {monedasDisponibles < itemActual.precio && <p style={{ color: "#f87171", textAlign: "center", fontSize: "0.85rem" }}>No tienes suficientes monedas.</p>}
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button onClick={cerrarFlujo} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "1px solid #334155", background: "transparent", color: "#94a3b8", cursor: "pointer" }}>Cancelar</button>
-                  <button onClick={confirmarCompra} disabled={monedas < itemActual.precio || loadingAccion} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: monedas >= itemActual.precio ? "linear-gradient(135deg, #f59e0b, #d97706)" : "#334155", color: monedas >= itemActual.precio ? "#000" : "#64748b", fontWeight: "bold", cursor: monedas >= itemActual.precio ? "pointer" : "not-allowed" }}>
+                  <button onClick={confirmarCompra} disabled={monedasDisponibles < itemActual.precio || loadingAccion} style={{ flex: 1, padding: "12px", borderRadius: "10px", border: "none", background: monedasDisponibles >= itemActual.precio ? "linear-gradient(135deg, #f59e0b, #d97706)" : "#334155", color: monedasDisponibles >= itemActual.precio ? "#000" : "#64748b", fontWeight: "bold", cursor: monedasDisponibles >= itemActual.precio ? "pointer" : "not-allowed" }}>
                     {loadingAccion ? "..." : "Comprar"}
                   </button>
                 </div>
