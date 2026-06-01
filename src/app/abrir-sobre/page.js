@@ -198,13 +198,24 @@ export default function AbrirSobrePage() {
     const usandoMegaBonus = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus > 0;
     const usandoRuleta    = freshSobresHoy >= freshMaxSobres && freshSobresBonus === 0 && freshMegaSobresBonus === 0 && freshSobresRuleta > 0;
     const mega = (!usandoRuleta && siguienteEsMega) || usandoMegaBonus;
+    // Milestone protegido: si el hito de cada-15-sobres coincide con un megaBonus comprado o
+    // un sobre de ruleta (que no se "actualiza" a mega por el milestone), el milestone se
+    // depositaría como +1 megaSobresBonus para que no se pierda.
+    // · usandoMegaBonus: el sobre ya es mega por la compra; sin esta protección el milestone
+    //   se consume sin dar ninguna recompensa extra.
+    // · usandoRuleta: los sobres de ruleta no reciben el upgrade automático a mega (!usandoRuleta),
+    //   así que el milestone se consumiría sin dispararse.
+    const milestonePerdido = siguienteEsMega && (usandoMegaBonus || usandoRuleta);
     setEsMegaSobre(mega);
     setEsSobreRuleta(usandoRuleta);
     // Sincronizar contadores locales con lo que se reclamó
     if (!usandoBonus && !usandoMegaBonus && !usandoRuleta) setSobresHoy(freshSobresHoy + 1);
     if (usandoBonus)     setSobresBonus(freshSobresBonus - 1);
-    if (usandoMegaBonus) setMegaSobresBonus(freshMegaSobresBonus - 1);
-    if (usandoRuleta)    setSobresRuleta(freshSobresRuleta - 1);
+    if (usandoMegaBonus) setMegaSobresBonus(freshMegaSobresBonus - 1 + (milestonePerdido ? 1 : 0));
+    if (usandoRuleta) {
+      setSobresRuleta(freshSobresRuleta - 1);
+      if (milestonePerdido) setMegaSobresBonus(freshMegaSobresBonus + 1);
+    }
     abriendoRef.current = false; // a partir de aquí fase cambia a "abriendo", el guard ya no hace falta
 
     setFase("abriendo");
@@ -248,8 +259,16 @@ export default function AbrirSobrePage() {
       if (usandoBonus) { nuevoBonus = freshSobresBonus - 1; setSobresBonus(nuevoBonus); }
     }
 
+    // Mensaje de milestone si se depositó un mega sobre extra
+    if (milestonePerdido) {
+      setRachaMsg((prev) => prev
+        ? `${prev} · ⭐ +1 Mega Sobre de hito`
+        : `⭐ ¡Hito! Apertura #${(totalSobresAbiertos || 0) + 1}: +1 Mega Sobre bonus`);
+    }
+
     // Mega / Ruleta (ya reclamados en la transacción, calcular para write de Firestore)
-    const nuevoMegaSobresBonus = usandoMegaBonus ? freshMegaSobresBonus - 1 : freshMegaSobresBonus;
+    const nuevoMegaSobresBonus = (usandoMegaBonus ? freshMegaSobresBonus - 1 : freshMegaSobresBonus)
+      + (milestonePerdido ? 1 : 0);
     const nuevoSobresRuleta    = usandoRuleta    ? freshSobresRuleta    - 1 : freshSobresRuleta;
 
     const cantidadCromos = mega ? CROMOS_MEGA : CROMOS_NORMAL;
