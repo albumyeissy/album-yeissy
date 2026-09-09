@@ -47,6 +47,7 @@ export default function TiendaPage() {
   const [jugadores, setJugadores] = useState([]);
   const [jugadorObj, setJugadorObj] = useState(null);
   const [cartasVictima, setCartasVictima] = useState([]);
+  const [cartaRobadaSeleccionada, setCartaRobadaSeleccionada] = useState(null); // carta que el usuario ha SELECCIONADO (pendiente de confirmar)
   const [cartaRobada, setCartaRobada] = useState(null);
   const [espiarResultado, setEspiarResultado] = useState(null);
   const [okMsg, setOkMsg]         = useState("");
@@ -722,7 +723,7 @@ export default function TiendaPage() {
               </>
             )}
 
-            {/* Seleccionar carta a robar */}
+            {/* Seleccionar carta a robar — primero selección, luego confirmación */}
             {fase === "carta_robo" && (
               <>
                 <h2 style={{ textAlign: "center", fontSize: "1rem", marginBottom: "4px" }}>Elige una carta para robar</h2>
@@ -739,16 +740,59 @@ export default function TiendaPage() {
                 {cartasVictima.length === 0 ? (
                   <p style={{ textAlign: "center", color: "#64748b" }}>Este jugador no tiene cartas de ese tipo.</p>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "14px" }}>
-                    {cartasVictima.map((c) => (
-                      <button key={c.cromoId} onClick={() => ejecutarCompra(itemActual, jugadorObj, c.cromoId)} disabled={loadingAccion} style={{ background: "#0f172a", border: `2px solid ${getBorderColor(c.rareza)}`, borderRadius: "10px", padding: "4px", cursor: "pointer", overflow: "hidden" }}>
-                        <img src={c.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "7px" }} />
-                        <p style={{ margin: "4px 0 0", fontSize: "0.6rem", color: "white", textAlign: "center", lineHeight: 1.2 }}>{c.nombre}</p>
+                  <>
+                    <p style={{ fontSize: "0.75rem", color: "#94a3b8", textAlign: "center", marginBottom: "10px" }}>
+                      Toca una carta para seleccionarla, luego confirma el robo.
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "14px" }}>
+                      {cartasVictima.map((c) => {
+                        const isSelected = cartaRobadaSeleccionada?.cromoId === c.cromoId;
+                        return (
+                          <button
+                            key={c.cromoId}
+                            onClick={() => setCartaRobadaSeleccionada(isSelected ? null : c)}
+                            disabled={loadingAccion}
+                            style={{
+                              background: "#0f172a",
+                              border: isSelected ? `3px solid #3b82f6` : `2px solid ${getBorderColor(c.rareza)}`,
+                              borderRadius: "10px", padding: "4px", cursor: "pointer", overflow: "hidden",
+                              transform: isSelected ? "scale(1.06)" : "scale(1)",
+                              transition: "transform .15s, border .15s",
+                              boxShadow: isSelected ? "0 0 14px rgba(59,130,246,.5)" : "none",
+                            }}
+                          >
+                            <img src={c.imagen} alt="" style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "7px" }} />
+                            <p style={{ margin: "4px 0 0", fontSize: "0.6rem", color: "white", textAlign: "center", lineHeight: 1.2 }}>{c.nombre}</p>
+                            {isSelected && <p style={{ margin: "2px 0 0", fontSize: "0.6rem", color: "#3b82f6", fontWeight: "bold", textAlign: "center" }}>✓ Seleccionada</p>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {/* Botón de confirmación — solo visible con carta seleccionada */}
+                    {cartaRobadaSeleccionada && (
+                      <button
+                        onClick={() => {
+                          ejecutarCompra(itemActual, jugadorObj, cartaRobadaSeleccionada.cromoId);
+                          setCartaRobadaSeleccionada(null);
+                        }}
+                        disabled={loadingAccion}
+                        style={{
+                          width: "100%", marginBottom: "8px", padding: "14px",
+                          borderRadius: "10px", border: "none",
+                          background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                          color: "white", fontWeight: "bold", fontSize: "0.9rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {loadingAccion ? "Robando…" : `🎯 Robar "${cartaRobadaSeleccionada.nombre}"`}
                       </button>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 )}
-                <button onClick={cerrarFlujo} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #334155", background: "transparent", color: "#94a3b8", cursor: "pointer" }}>Cancelar</button>
+                <button
+                  onClick={() => { cerrarFlujo(); setCartaRobadaSeleccionada(null); }}
+                  style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #334155", background: "transparent", color: "#94a3b8", cursor: "pointer" }}
+                >Cancelar</button>
               </>
             )}
 

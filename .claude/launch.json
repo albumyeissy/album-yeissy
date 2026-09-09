@@ -2,10 +2,28 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "yeissypoly-dev",
-      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
-      "runtimeArgs": ["C:\\Users\\JC\\Documents\\yeissypoly\\node_modules\\next\\dist\\bin\\next", "dev", "C:\\Users\\JC\\Documents\\yeissypoly", "--port", "3001"],
-      "port": 3001
+      "name": "album-yeissy-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3002"],
+      "port": 3002
+    },
+    {
+      "name": "la-previa-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\JC\\Documents\\la-previa && npx expo start --web --port 8082"],
+      "port": 8082
+    },
+    {
+      "name": "dakota-pasion",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\JC\\Documents\\dakota-pasion && npm run dev -- --port 3003"],
+      "port": 3003
+    },
+    {
+      "name": "circuit-editor",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d C:\\Users\\JC\\Documents\\circuito-diario\\tools\\circuit-editor && npx serve -l 8080"],
+      "port": 8080
     }
   ]
 }
